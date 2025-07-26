@@ -119,4 +119,7 @@ export interface MappingInterfaceProps {
   onMappingChange: (mapping: MappingState) => void;
   confidenceThreshold?: number;
   importedData?: ImportedData;
+  onBack?: () => void;
+  onContinue?: () => void;
+  onExit?: () => void;
 }

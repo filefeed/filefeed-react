@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Card,
   Group,
@@ -17,6 +17,10 @@ import {
   Title,
   Flex,
   Divider,
+  Paper,
+  ThemeIcon,
+  Tooltip,
+  ScrollArea,
 } from '@mantine/core';
 import { 
   IconArrowRight, 
@@ -24,7 +28,14 @@ import {
   IconCheck, 
   IconX, 
   IconAlertTriangle,
-  IconRefresh 
+  IconRefresh,
+  IconGripVertical,
+  IconDatabase,
+  IconFileText,
+  IconLink,
+  IconUnlink,
+  IconTarget,
+  IconChevronRight
 } from '@tabler/icons-react';
 import { MappingInterfaceProps } from '../types';
 
@@ -35,155 +46,265 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   onMappingChange,
   confidenceThreshold = 0.7,
   importedData,
+  onBack,
+  onContinue,
+  onExit,
 }) => {
-  const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
+  const [hoveredSource, setHoveredSource] = useState<string | null>(null);
+  const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [draggedSource, setDraggedSource] = useState<string | null>(null);
 
   const handleMappingUpdate = (sourceColumn: string, targetField: string | null) => {
     const newMapping = { ...mapping, [sourceColumn]: targetField };
     onMappingChange(newMapping);
   };
 
+  const handleDragStart = (e: React.DragEvent, sourceColumn: string) => {
+    setDraggedSource(sourceColumn);
+    e.dataTransfer.setData('text/plain', sourceColumn);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetField: string) => {
+    e.preventDefault();
+    const sourceColumn = e.dataTransfer.getData('text/plain');
+    if (sourceColumn) {
+      handleMappingUpdate(sourceColumn, targetField);
+    }
+    setDraggedSource(null);
+  };
+
+  const handleRemoveMapping = (sourceColumn: string) => {
+    handleMappingUpdate(sourceColumn, null);
+  };
+
   const getPreviewData = (sourceColumn: string) => {
     if (!importedData?.rows) return [];
-    return importedData.rows.slice(0, 3).map(row => row[sourceColumn]).filter(val => val !== undefined && val !== null && val !== '');
+    return importedData.rows.slice(0, 5).map(row => row[sourceColumn]).filter(val => val !== undefined && val !== null && val !== '');
   };
 
   const incomingFieldsCount = importedHeaders.length;
   const destinationFieldsCount = fields.length;
   const mappedCount = Object.values(mapping).filter(value => value !== null).length;
+  const unmappedSources = importedHeaders.filter(header => !mapping[header]);
+  const mappedSources = importedHeaders.filter(header => mapping[header]);
+  const usedTargets = Object.values(mapping).filter(Boolean);
+  const availableTargets = fields.filter(field => !usedTargets.includes(field.key));
 
   return (
-    <Box style={{ padding: '24px' }}>
+    <Box style={{ padding: '16px', minHeight: '600px' }}>
       {/* Header */}
-      <Box mb="xl">
-        <Title order={2} size="h3" fw={600} mb="xs">
-          Map fields
-        </Title>
-        <Text size="sm" c="gray.6">
-          Review and confirm each mapping choice
-        </Text>
-      </Box>
+      <Flex justify="space-between" align="center" mb="md">
+        <Group>
+          <Text size="lg" fw={600} c="gray.8">
+            Column Mapping
+          </Text>
+          <Badge 
+            variant="outline" 
+            size="sm"
+            styles={{
+              root: {
+                backgroundColor: 'white',
+                borderColor: 'black',
+                color: 'black'
+              }
+            }}
+          >
+            {mappedCount}/{destinationFieldsCount} mapped
+          </Badge>
+        </Group>
+        
+        <Group gap="xs">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={onBack}
+            styles={{
+              root: {
+                backgroundColor: 'white',
+                borderColor: 'black',
+                color: 'black',
+                '&:hover': {
+                  backgroundColor: 'var(--mantine-color-gray-0)'
+                }
+              }
+            }}
+          >
+            Back
+          </Button>
+          
+          <Button
+            size="xs"
+            disabled={Object.keys(mapping).length === 0}
+            onClick={onContinue}
+            styles={{
+              root: {
+                backgroundColor: 'black',
+                color: 'white',
+                border: 'none',
+                '&:hover': {
+                  backgroundColor: '#333'
+                },
+                '&:disabled': {
+                  backgroundColor: 'var(--mantine-color-gray-4)',
+                  color: 'var(--mantine-color-gray-6)'
+                }
+              }
+            }}
+          >
+            Continue
+          </Button>
+        </Group>
+      </Flex>
 
-      {/* Main Layout */}
-      <Flex gap="xl" align="flex-start">
-        {/* Left Side - Mapping */}
-        <Box style={{ flex: 2 }}>
-          {/* Field Counts */}
-          <Flex gap="xl" mb="lg">
-            <Box>
-              <Text size="sm" fw={600} c="gray.8" mb="xs">
-                INCOMING FIELDS {incomingFieldsCount} of {incomingFieldsCount}
-              </Text>
-            </Box>
-            <Box>
-              <Text size="sm" fw={600} c="gray.8" mb="xs">
-                DESTINATION FIELDS {mappedCount} of {destinationFieldsCount}
-              </Text>
-            </Box>
-          </Flex>
-
-          {/* Mapping Rows */}
-          <Stack gap="sm">
-            {importedHeaders.map((header) => {
-              const mappedField = mapping[header];
-              const targetField = fields.find(f => f.key === mappedField);
-              
-              return (
-                <Card 
-                  key={header} 
-                  padding="md" 
-                  radius="md" 
-                  withBorder
-                  style={{
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    backgroundColor: hoveredMapping === header ? 'var(--mantine-color-gray-0)' : 'white'
-                  }}
-                  onMouseEnter={() => setHoveredMapping(header)}
-                  onMouseLeave={() => setHoveredMapping(null)}
-                >
-                  <Flex align="center" gap="md">
-                    {/* Incoming Field */}
-                    <Box style={{ flex: 1 }}>
-                      <Text size="sm" fw={500} c="gray.8">
-                        {header}
-                      </Text>
-                    </Box>
-
-                    {/* Arrow */}
-                    <Box>
-                      <IconArrowRight size={16} color="gray" />
-                    </Box>
-
-                    {/* Destination Field */}
-                    <Box style={{ flex: 1 }}>
-                      <Select
-                        placeholder="Select destination field"
-                        value={mappedField}
-                        onChange={(value) => handleMappingUpdate(header, value)}
-                        data={fields.map(field => ({
-                          value: field.key,
-                          label: `${field.label} (${field.type})${field.required ? ' *' : ''}`,
-                        }))}
-                        searchable
-                        clearable
-                        size="sm"
-                        styles={{
-                          input: {
-                            backgroundColor: mappedField ? 'var(--mantine-color-green-0)' : undefined,
-                            borderColor: mappedField ? 'var(--mantine-color-green-3)' : undefined
-                          }
-                        }}
-                      />
-                    </Box>
-                  </Flex>
-                </Card>
-              );
-            })}
-          </Stack>
+      {/* Main Mapping Interface - Two Column Layout */}
+      <Flex gap="md" style={{ minHeight: '500px' }}>
+        {/* Left Side - Mapping Fields */}
+        <Box style={{ flex: 1 }}>
+          <Paper p="md" withBorder radius="md" style={{ height: '500px' }}>
+            <Text size="sm" fw={600} c="gray.8" mb="md">
+              Field Mappings
+            </Text>
+            
+            <ScrollArea style={{ height: '440px' }}>
+              <Stack gap="xs">
+                {importedHeaders.map((header) => {
+                  const mappedField = mapping[header];
+                  const targetField = fields.find(f => f.key === mappedField);
+                  const isMapped = !!mappedField;
+                  
+                  return (
+                    <Card
+                      key={header}
+                      p="sm"
+                      radius="md"
+                      withBorder
+                      style={{
+                        backgroundColor: hoveredSource === header 
+                          ? 'var(--mantine-color-gray-0)' 
+                          : 'white',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={() => setHoveredSource(header)}
+                      onMouseLeave={() => setHoveredSource(null)}
+                    >
+                      <Flex align="center" style={{ flex: 1 }} gap="md">
+                        {/* Left side - Source column (50%) */}
+                        <Box style={{ flex: 1 }}>
+                          <Text size="sm" fw={500} c="gray.8">
+                            {header}
+                          </Text>
+                        </Box>
+                        
+                        {/* Middle - Arrow */}
+                        <Box>
+                          <IconArrowRight size={16} color="gray" />
+                        </Box>
+                        
+                        {/* Right side - Destination field (50%) */}
+                        <Box style={{ flex: 1 }}>
+                          <Select
+                            placeholder="Select field"
+                            value={mappedField}
+                            onChange={(value) => handleMappingUpdate(header, value)}
+                            data={fields.map(field => ({
+                              value: field.key,
+                              label: field.label,
+                            }))}
+                            searchable
+                            clearable
+                            size="xs"
+                            styles={{
+                              input: {
+                                fontSize: '12px',
+                                border: isMapped ? 'none' : '1px solid var(--mantine-color-gray-4)',
+                                backgroundColor: 'white',
+                                cursor: 'pointer'
+                              }
+                            }}
+                          />
+                        </Box>
+                      </Flex>
+                    </Card>
+                  );
+                })}
+              </Stack>
+            </ScrollArea>
+          </Paper>
         </Box>
 
-        {/* Right Side - Preview */}
+        {/* Right Side - Row Preview */}
         <Box style={{ flex: 1 }}>
-          <Card shadow="sm" padding="md" radius="md" withBorder style={{ position: 'sticky', top: '20px' }}>
+          <Paper p="md" withBorder radius="md" style={{ height: '500px' }}>
             <Text size="sm" fw={600} c="gray.8" mb="md">
               Data Preview
             </Text>
             
-            {hoveredMapping ? (
-              <Box>
-                <Text size="xs" fw={500} c="gray.6" mb="xs">
-                  {hoveredMapping}
-                </Text>
-                <Stack gap="xs">
-                  {getPreviewData(hoveredMapping).slice(0, 5).map((value, index) => (
-                    <Box 
-                      key={index}
-                      style={{
-                        padding: '6px 8px',
-                        backgroundColor: 'var(--mantine-color-gray-0)',
-                        borderRadius: '4px',
-                        border: '1px solid var(--mantine-color-gray-2)'
-                      }}
-                    >
-                      <Text size="xs" c="gray.7">
-                        {String(value)}
-                      </Text>
-                    </Box>
-                  ))}
-                  {getPreviewData(hoveredMapping).length === 0 && (
-                    <Text size="xs" c="gray.5" style={{ fontStyle: 'italic' }}>
-                      No data available
+            <Box style={{ height: '440px', overflow: 'auto' }}>
+              {hoveredSource ? (
+                <Box>
+                  <Text size="sm" fw={500} c="gray.7" mb="md">
+                    Column: {hoveredSource}
+                  </Text>
+                  
+                  {/* Sample Data */}
+                  <Stack gap="xs">
+                    <Text size="xs" fw={500} c="gray.6" tt="uppercase">
+                      Sample Values:
                     </Text>
-                  )}
-                </Stack>
-              </Box>
-            ) : (
-              <Text size="xs" c="gray.5" style={{ fontStyle: 'italic' }}>
-                Hover over a mapping row to see data preview
-              </Text>
-            )}
-          </Card>
+                    {getPreviewData(hoveredSource).slice(0, 10).map((value, index) => (
+                      <Box 
+                        key={index}
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: 'var(--mantine-color-gray-0)',
+                          borderRadius: '4px',
+                          border: '1px solid var(--mantine-color-gray-2)'
+                        }}
+                      >
+                        <Text size="sm" c="gray.8">
+                          Row {index + 1}: {String(value)}
+                        </Text>
+                      </Box>
+                    ))}
+                    
+                    {getPreviewData(hoveredSource).length === 0 && (
+                      <Text size="sm" c="gray.5" style={{ fontStyle: 'italic' }}>
+                        No data available for this column
+                      </Text>
+                    )}
+                    
+                    {getPreviewData(hoveredSource).length > 10 && (
+                      <Text size="xs" c="gray.5" style={{ fontStyle: 'italic' }}>
+                        ... and {getPreviewData(hoveredSource).length - 10} more rows
+                      </Text>
+                    )}
+                  </Stack>
+                </Box>
+              ) : (
+                <Flex 
+                  align="center" 
+                  justify="center" 
+                  style={{ height: '100%' }}
+                  direction="column"
+                  gap="md"
+                >
+                  <ThemeIcon variant="light" color="gray" size="xl">
+                    <IconFileText size={24} />
+                  </ThemeIcon>
+                  <Text size="sm" c="gray.5" ta="center">
+                    Hover over a field mapping on the left
+                    <br />
+                    to see data preview
+                  </Text>
+                </Flex>
+              )}
+            </Box>
+          </Paper>
         </Box>
       </Flex>
     </Box>
