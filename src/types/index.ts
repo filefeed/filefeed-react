@@ -62,7 +62,7 @@ export interface ValidationError {
   row: number;
   field: string;
   message: string;
-  severity: 'error' | 'warning';
+  severity: "error" | "warning";
 }
 
 export interface DataRow {
@@ -95,7 +95,7 @@ export interface CellvioEvents {
 export interface CellvioSDKProps {
   config: CreateWorkbookConfig;
   events?: CellvioEvents;
-  theme?: 'light' | 'dark';
+  theme?: "light" | "dark";
   className?: string;
 }
 

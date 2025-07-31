@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from "react";
 import {
   Card,
   Group,
@@ -21,12 +21,12 @@ import {
   ThemeIcon,
   Tooltip,
   ScrollArea,
-} from '@mantine/core';
-import { 
-  IconArrowRight, 
-  IconWand, 
-  IconCheck, 
-  IconX, 
+} from "@mantine/core";
+import {
+  IconArrowRight,
+  IconWand,
+  IconCheck,
+  IconX,
   IconAlertTriangle,
   IconRefresh,
   IconGripVertical,
@@ -35,9 +35,9 @@ import {
   IconLink,
   IconUnlink,
   IconTarget,
-  IconChevronRight
-} from '@tabler/icons-react';
-import { MappingInterfaceProps } from '../types';
+  IconChevronRight,
+} from "@tabler/icons-react";
+import { MappingInterfaceProps } from "../types";
 
 const MappingInterface: React.FC<MappingInterfaceProps> = ({
   importedHeaders,
@@ -55,14 +55,17 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [draggedSource, setDraggedSource] = useState<string | null>(null);
 
-  const handleMappingUpdate = (sourceColumn: string, targetField: string | null) => {
+  const handleMappingUpdate = (
+    sourceColumn: string,
+    targetField: string | null
+  ) => {
     const newMapping = { ...mapping, [sourceColumn]: targetField };
     onMappingChange(newMapping);
   };
 
   const handleDragStart = (e: React.DragEvent, sourceColumn: string) => {
     setDraggedSource(sourceColumn);
-    e.dataTransfer.setData('text/plain', sourceColumn);
+    e.dataTransfer.setData("text/plain", sourceColumn);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -71,7 +74,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetField: string) => {
     e.preventDefault();
-    const sourceColumn = e.dataTransfer.getData('text/plain');
+    const sourceColumn = e.dataTransfer.getData("text/plain");
     if (sourceColumn) {
       handleMappingUpdate(sourceColumn, targetField);
     }
@@ -84,40 +87,47 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
 
   const getPreviewData = (sourceColumn: string) => {
     if (!importedData?.rows) return [];
-    return importedData.rows.slice(0, 5).map(row => row[sourceColumn]).filter(val => val !== undefined && val !== null && val !== '');
+    return importedData.rows
+      .slice(0, 5)
+      .map((row) => row[sourceColumn])
+      .filter((val) => val !== undefined && val !== null && val !== "");
   };
 
   const incomingFieldsCount = importedHeaders.length;
   const destinationFieldsCount = fields.length;
-  const mappedCount = Object.values(mapping).filter(value => value !== null).length;
-  const unmappedSources = importedHeaders.filter(header => !mapping[header]);
-  const mappedSources = importedHeaders.filter(header => mapping[header]);
+  const mappedCount = Object.values(mapping).filter(
+    (value) => value !== null
+  ).length;
+  const unmappedSources = importedHeaders.filter((header) => !mapping[header]);
+  const mappedSources = importedHeaders.filter((header) => mapping[header]);
   const usedTargets = Object.values(mapping).filter(Boolean);
-  const availableTargets = fields.filter(field => !usedTargets.includes(field.key));
+  const availableTargets = fields.filter(
+    (field) => !usedTargets.includes(field.key)
+  );
 
   return (
-    <Box style={{ padding: '16px', minHeight: '600px' }}>
+    <Box style={{ padding: "16px", minHeight: "600px" }}>
       {/* Header */}
       <Flex justify="space-between" align="center" mb="md">
         <Group>
           <Text size="lg" fw={600} c="gray.8">
             Column Mapping
           </Text>
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             size="sm"
             styles={{
               root: {
-                backgroundColor: 'white',
-                borderColor: 'black',
-                color: 'black'
-              }
+                backgroundColor: "white",
+                borderColor: "black",
+                color: "black",
+              },
             }}
           >
             {mappedCount}/{destinationFieldsCount} mapped
           </Badge>
         </Group>
-        
+
         <Group gap="xs">
           <Button
             variant="outline"
@@ -125,35 +135,35 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
             onClick={onBack}
             styles={{
               root: {
-                backgroundColor: 'white',
-                borderColor: 'black',
-                color: 'black',
-                '&:hover': {
-                  backgroundColor: 'var(--mantine-color-gray-0)'
-                }
-              }
+                backgroundColor: "white",
+                borderColor: "black",
+                color: "black",
+                "&:hover": {
+                  backgroundColor: "var(--mantine-color-gray-0)",
+                },
+              },
             }}
           >
             Back
           </Button>
-          
+
           <Button
             size="xs"
             disabled={Object.keys(mapping).length === 0}
             onClick={onContinue}
             styles={{
               root: {
-                backgroundColor: 'black',
-                color: 'white',
-                border: 'none',
-                '&:hover': {
-                  backgroundColor: '#333'
+                backgroundColor: "black",
+                color: "white",
+                border: "none",
+                "&:hover": {
+                  backgroundColor: "#333",
                 },
-                '&:disabled': {
-                  backgroundColor: 'var(--mantine-color-gray-4)',
-                  color: 'var(--mantine-color-gray-6)'
-                }
-              }
+                "&:disabled": {
+                  backgroundColor: "var(--mantine-color-gray-4)",
+                  color: "var(--mantine-color-gray-6)",
+                },
+              },
             }}
           >
             Continue
@@ -162,21 +172,21 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
       </Flex>
 
       {/* Main Mapping Interface - Two Column Layout */}
-      <Flex gap="md" style={{ minHeight: '500px' }}>
+      <Flex gap="md" style={{ minHeight: "500px" }}>
         {/* Left Side - Mapping Fields */}
         <Box style={{ flex: 1 }}>
-          <Paper p="md" withBorder radius="md" style={{ height: '500px' }}>
+          <Paper p="md" withBorder radius="md" style={{ height: "500px" }}>
             <Text size="sm" fw={600} c="gray.8" mb="md">
               Field Mappings
             </Text>
-            
-            <ScrollArea style={{ height: '440px' }}>
+
+            <ScrollArea style={{ height: "440px" }}>
               <Stack gap="xs">
                 {importedHeaders.map((header) => {
                   const mappedField = mapping[header];
-                  const targetField = fields.find(f => f.key === mappedField);
+                  const targetField = fields.find((f) => f.key === mappedField);
                   const isMapped = !!mappedField;
-                  
+
                   return (
                     <Card
                       key={header}
@@ -184,10 +194,11 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                       radius="md"
                       withBorder
                       style={{
-                        backgroundColor: hoveredSource === header 
-                          ? 'var(--mantine-color-gray-0)' 
-                          : 'white',
-                        transition: 'all 0.2s ease'
+                        backgroundColor:
+                          hoveredSource === header
+                            ? "var(--mantine-color-gray-0)"
+                            : "white",
+                        transition: "all 0.2s ease",
                       }}
                       onMouseEnter={() => setHoveredSource(header)}
                       onMouseLeave={() => setHoveredSource(null)}
@@ -199,19 +210,21 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             {header}
                           </Text>
                         </Box>
-                        
+
                         {/* Middle - Arrow */}
                         <Box>
                           <IconArrowRight size={16} color="gray" />
                         </Box>
-                        
+
                         {/* Right side - Destination field (50%) */}
                         <Box style={{ flex: 1 }}>
                           <Select
                             placeholder="Select field"
                             value={mappedField}
-                            onChange={(value) => handleMappingUpdate(header, value)}
-                            data={fields.map(field => ({
+                            onChange={(value) =>
+                              handleMappingUpdate(header, value)
+                            }
+                            data={fields.map((field) => ({
                               value: field.key,
                               label: field.label,
                             }))}
@@ -220,11 +233,13 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             size="xs"
                             styles={{
                               input: {
-                                fontSize: '12px',
-                                border: isMapped ? 'none' : '1px solid var(--mantine-color-gray-4)',
-                                backgroundColor: 'white',
-                                cursor: 'pointer'
-                              }
+                                fontSize: "12px",
+                                border: isMapped
+                                  ? "none"
+                                  : "1px solid var(--mantine-color-gray-4)",
+                                backgroundColor: "white",
+                                cursor: "pointer",
+                              },
                             }}
                           />
                         </Box>
@@ -239,57 +254,68 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
 
         {/* Right Side - Row Preview */}
         <Box style={{ flex: 1 }}>
-          <Paper p="md" withBorder radius="md" style={{ height: '500px' }}>
+          <Paper p="md" withBorder radius="md" style={{ height: "500px" }}>
             <Text size="sm" fw={600} c="gray.8" mb="md">
               Data Preview
             </Text>
-            
-            <Box style={{ height: '440px', overflow: 'auto' }}>
+
+            <Box style={{ height: "440px", overflow: "auto" }}>
               {hoveredSource ? (
                 <Box>
                   <Text size="sm" fw={500} c="gray.7" mb="md">
                     Column: {hoveredSource}
                   </Text>
-                  
+
                   {/* Sample Data */}
                   <Stack gap="xs">
                     <Text size="xs" fw={500} c="gray.6" tt="uppercase">
                       Sample Values:
                     </Text>
-                    {getPreviewData(hoveredSource).slice(0, 10).map((value, index) => (
-                      <Box 
-                        key={index}
-                        style={{
-                          padding: '8px 12px',
-                          backgroundColor: 'var(--mantine-color-gray-0)',
-                          borderRadius: '4px',
-                          border: '1px solid var(--mantine-color-gray-2)'
-                        }}
-                      >
-                        <Text size="sm" c="gray.8">
-                          Row {index + 1}: {String(value)}
-                        </Text>
-                      </Box>
-                    ))}
-                    
+                    {getPreviewData(hoveredSource)
+                      .slice(0, 10)
+                      .map((value, index) => (
+                        <Box
+                          key={index}
+                          style={{
+                            padding: "8px 12px",
+                            backgroundColor: "var(--mantine-color-gray-0)",
+                            borderRadius: "4px",
+                            border: "1px solid var(--mantine-color-gray-2)",
+                          }}
+                        >
+                          <Text size="sm" c="gray.8">
+                            Row {index + 1}: {String(value)}
+                          </Text>
+                        </Box>
+                      ))}
+
                     {getPreviewData(hoveredSource).length === 0 && (
-                      <Text size="sm" c="gray.5" style={{ fontStyle: 'italic' }}>
+                      <Text
+                        size="sm"
+                        c="gray.5"
+                        style={{ fontStyle: "italic" }}
+                      >
                         No data available for this column
                       </Text>
                     )}
-                    
+
                     {getPreviewData(hoveredSource).length > 10 && (
-                      <Text size="xs" c="gray.5" style={{ fontStyle: 'italic' }}>
-                        ... and {getPreviewData(hoveredSource).length - 10} more rows
+                      <Text
+                        size="xs"
+                        c="gray.5"
+                        style={{ fontStyle: "italic" }}
+                      >
+                        ... and {getPreviewData(hoveredSource).length - 10} more
+                        rows
                       </Text>
                     )}
                   </Stack>
                 </Box>
               ) : (
-                <Flex 
-                  align="center" 
-                  justify="center" 
-                  style={{ height: '100%' }}
+                <Flex
+                  align="center"
+                  justify="center"
+                  style={{ height: "100%" }}
                   direction="column"
                   gap="md"
                 >

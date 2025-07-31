@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   Container,
   Title,
@@ -22,7 +22,7 @@ import {
   SegmentedControl,
   Table,
   ScrollArea,
-} from '@mantine/core';
+} from "@mantine/core";
 import {
   IconFileImport,
   IconMapPin,
@@ -36,27 +36,34 @@ import {
   IconCircle,
   IconUpload,
   IconEdit,
-} from '@tabler/icons-react';
-import { CellvioSDKProps, Action } from '../types';
-import { useWorkbookStore } from '../stores/workbookStore';
-import FileImport from './FileImport';
-import DataTable from './DataTable';
-import MappingInterface from './MappingInterface';
+} from "@tabler/icons-react";
+import { CellvioSDKProps, Action } from "../types";
+import { useWorkbookStore } from "../stores/workbookStore";
+import FileImport from "./FileImport";
+import DataTable from "./DataTable";
+import MappingInterface from "./MappingInterface";
 
 const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
   config,
   events,
-  theme = 'light',
+  theme = "light",
   className,
 }) => {
-  const [activeTab, setActiveTab] = useState<string>('import');
+  const [activeTab, setActiveTab] = useState<string>("import");
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [isManualEntryMode, setIsManualEntryMode] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [manualEntryData, setManualEntryData] = useState<Record<string, Record<string, any>>>({});
-  const [manualEntryErrors, setManualEntryErrors] = useState<Record<string, Record<string, string>>>({});
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'valid' | 'invalid'>('all');
-  const [tableContainerRef, setTableContainerRef] = useState<HTMLDivElement | null>(null);
+  const [manualEntryData, setManualEntryData] = useState<
+    Record<string, Record<string, any>>
+  >({});
+  const [manualEntryErrors, setManualEntryErrors] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [selectedFilter, setSelectedFilter] = useState<
+    "all" | "valid" | "invalid"
+  >("all");
+  const [tableContainerRef, setTableContainerRef] =
+    useState<HTMLDivElement | null>(null);
   const [maxRows, setMaxRows] = useState(18); // Default fallback
 
   const {
@@ -79,37 +86,39 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
   }, [config, setConfig]);
 
   // Get current sheet configuration
-  const currentSheetConfig = config.sheets?.find(sheet => sheet.slug === currentSheet);
+  const currentSheetConfig = config.sheets?.find(
+    (sheet) => sheet.slug === currentSheet
+  );
 
   // Validation function for manual entry
   const validateField = (fieldKey: string, value: any): string | null => {
-    const field = currentSheetConfig?.fields.find(f => f.key === fieldKey);
+    const field = currentSheetConfig?.fields.find((f) => f.key === fieldKey);
     if (!field) return null;
 
     // Required field validation
-    if (field.required && (!value || value.toString().trim() === '')) {
+    if (field.required && (!value || value.toString().trim() === "")) {
       return `${field.label} is required`;
     }
 
     // Skip validation for empty optional fields
-    if (!value || value.toString().trim() === '') {
+    if (!value || value.toString().trim() === "") {
       return null;
     }
 
     // Type validation
     switch (field.type) {
-      case 'number':
+      case "number":
         if (isNaN(Number(value))) {
           return `${field.label} must be a valid number`;
         }
         break;
-      case 'email':
+      case "email":
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(value.toString())) {
           return `${field.label} must be a valid email address`;
         }
         break;
-      case 'date':
+      case "date":
         if (isNaN(Date.parse(value.toString()))) {
           return `${field.label} must be a valid date`;
         }
@@ -120,24 +129,30 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
     if (field.validations) {
       for (const rule of field.validations) {
         switch (rule.type) {
-          case 'regex':
+          case "regex":
             if (rule.value && !new RegExp(rule.value).test(value.toString())) {
               return rule.message;
             }
             break;
-          case 'min':
-            if (field.type === 'number' && Number(value) < rule.value) {
+          case "min":
+            if (field.type === "number" && Number(value) < rule.value) {
               return rule.message;
             }
-            if (field.type === 'string' && value.toString().length < rule.value) {
+            if (
+              field.type === "string" &&
+              value.toString().length < rule.value
+            ) {
               return rule.message;
             }
             break;
-          case 'max':
-            if (field.type === 'number' && Number(value) > rule.value) {
+          case "max":
+            if (field.type === "number" && Number(value) > rule.value) {
               return rule.message;
             }
-            if (field.type === 'string' && value.toString().length > rule.value) {
+            if (
+              field.type === "string" &&
+              value.toString().length > rule.value
+            ) {
               return rule.message;
             }
             break;
@@ -149,26 +164,30 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
   };
 
   // Handle manual entry input changes
-  const handleManualEntryChange = (rowIndex: number, fieldKey: string, value: string) => {
+  const handleManualEntryChange = (
+    rowIndex: number,
+    fieldKey: string,
+    value: string
+  ) => {
     const rowId = `manual-${rowIndex}`;
-    
+
     // Update data
-    setManualEntryData(prev => ({
+    setManualEntryData((prev) => ({
       ...prev,
       [rowId]: {
         ...prev[rowId],
-        [fieldKey]: value
-      }
+        [fieldKey]: value,
+      },
     }));
 
     // Validate field
     const error = validateField(fieldKey, value);
-    setManualEntryErrors(prev => ({
+    setManualEntryErrors((prev) => ({
       ...prev,
       [rowId]: {
         ...prev[rowId],
-        [fieldKey]: error || ''
-      }
+        [fieldKey]: error || "",
+      },
     }));
   };
 
@@ -178,17 +197,21 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
     let validRows = 0;
     let invalidRows = 0;
 
-    Object.keys(manualEntryData).forEach(rowId => {
+    Object.keys(manualEntryData).forEach((rowId) => {
       const rowData = manualEntryData[rowId];
       const rowErrors = manualEntryErrors[rowId] || {};
-      
+
       // Check if row has any data
-      const hasData = Object.values(rowData).some(value => value && value.toString().trim() !== '');
-      
+      const hasData = Object.values(rowData).some(
+        (value) => value && value.toString().trim() !== ""
+      );
+
       if (hasData) {
         totalRows++;
-        const hasErrors = Object.values(rowErrors).some(error => error && error.trim() !== '');
-        
+        const hasErrors = Object.values(rowErrors).some(
+          (error) => error && error.trim() !== ""
+        );
+
         if (hasErrors) {
           invalidRows++;
         } else {
@@ -205,24 +228,30 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
 
   // Determine if a row should be visible based on the selected filter
   const isRowVisible = (rowIndex: number): boolean => {
-    if (selectedFilter === 'all') return true;
-    
+    if (selectedFilter === "all") return true;
+
     const rowId = `manual-${rowIndex}`;
     const rowData = manualEntryData[rowId];
     const rowErrors = manualEntryErrors[rowId] || {};
-    
+
     // Check if row has any data
-    const hasData = rowData && Object.values(rowData).some(value => value && value.toString().trim() !== '');
-    
+    const hasData =
+      rowData &&
+      Object.values(rowData).some(
+        (value) => value && value.toString().trim() !== ""
+      );
+
     // Only show rows with data when filtering
     if (!hasData) return false;
-    
+
     // Check if row has validation errors
-    const hasErrors = Object.values(rowErrors).some(error => error && error.trim() !== '');
-    
-    if (selectedFilter === 'valid') return !hasErrors;
-    if (selectedFilter === 'invalid') return hasErrors;
-    
+    const hasErrors = Object.values(rowErrors).some(
+      (error) => error && error.trim() !== ""
+    );
+
+    if (selectedFilter === "valid") return !hasErrors;
+    if (selectedFilter === "invalid") return hasErrors;
+
     return true;
   };
 
@@ -235,10 +264,10 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
       const headerHeight = 24 + 2; // 24px row height + borders
       const rowHeight = 24 + 1; // 24px row height + border
       const padding = 32; // Container padding
-      
+
       const availableHeight = containerHeight - headerHeight - padding;
       const calculatedRows = Math.floor(availableHeight / rowHeight);
-      
+
       // Ensure minimum of 5 rows and maximum of 50 rows
       const newMaxRows = Math.max(5, Math.min(50, calculatedRows));
       setMaxRows(newMaxRows);
@@ -272,7 +301,7 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
 
   const handleDataImported = (data: any) => {
     setImportedData(data);
-    setActiveTab('mapping');
+    setActiveTab("mapping");
     events?.onDataImported?.(data);
   };
 
@@ -290,31 +319,51 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
 
   const getActionIcon = (operation: string) => {
     switch (operation) {
-      case 'submit': return <IconCheck size={16} />;
-      case 'download': return <IconDownload size={16} />;
-      case 'review': return <IconTable size={16} />;
-      case 'process': return <IconPlayerPlay size={16} />;
-      default: return <IconSettings size={16} />;
+      case "submit":
+        return <IconCheck size={16} />;
+      case "download":
+        return <IconDownload size={16} />;
+      case "review":
+        return <IconTable size={16} />;
+      case "process":
+        return <IconPlayerPlay size={16} />;
+      default:
+        return <IconSettings size={16} />;
     }
   };
 
   // Step configuration
   const steps = [
-    { id: 'import', label: 'Import Data', icon: IconFileImport, completed: !!importedData },
-    { id: 'mapping', label: 'Map Columns', icon: IconMapPin, completed: Object.keys(mappingState).length > 0 },
-    { id: 'review', label: 'Review & Edit', icon: IconTable, completed: processedData.length > 0 },
+    {
+      id: "import",
+      label: "Import Data",
+      icon: IconFileImport,
+      completed: !!importedData,
+    },
+    {
+      id: "mapping",
+      label: "Map Columns",
+      icon: IconMapPin,
+      completed: Object.keys(mappingState).length > 0,
+    },
+    {
+      id: "review",
+      label: "Review & Edit",
+      icon: IconTable,
+      completed: processedData.length > 0,
+    },
   ];
 
-  const currentStepIndex = steps.findIndex(step => step.id === activeTab);
+  const currentStepIndex = steps.findIndex((step) => step.id === activeTab);
   const progressPercentage = ((currentStepIndex + 1) / steps.length) * 100;
 
   return (
-    <div className={`cellvio-workbook ${className || ''}`} data-theme={theme}>
+    <div className={`cellvio-workbook ${className || ""}`} data-theme={theme}>
       <LoadingOverlay visible={isLoading} />
-      
+
       <Container size="xl" py="xl">
         {/* Show mapping interface if we're in mapping mode */}
-        {activeTab === 'mapping' && importedData && currentSheetConfig ? (
+        {activeTab === "mapping" && importedData && currentSheetConfig ? (
           <Card shadow="sm" padding={0} radius="md" withBorder>
             <MappingInterface
               importedHeaders={importedData.headers}
@@ -322,12 +371,12 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
               mapping={mappingState}
               onMappingChange={handleMappingChange}
               importedData={importedData}
-              onBack={() => setActiveTab('import')}
-              onContinue={() => setActiveTab('review')}
-              onExit={() => setActiveTab('import')}
+              onBack={() => setActiveTab("import")}
+              onContinue={() => setActiveTab("review")}
+              onExit={() => setActiveTab("import")}
             />
           </Card>
-        ) : activeTab === 'review' && importedData && currentSheetConfig ? (
+        ) : activeTab === "review" && importedData && currentSheetConfig ? (
           /* Review tab - same layout as first screen with mapped data */
           <Card shadow="sm" padding="md" radius="md" withBorder>
             {/* Top section - title and controls */}
@@ -339,16 +388,16 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                 <Button
                   variant="outline"
                   size="xs"
-                  onClick={() => setActiveTab('mapping')}
+                  onClick={() => setActiveTab("mapping")}
                   styles={{
                     root: {
-                      backgroundColor: 'white',
-                      borderColor: 'black',
-                      color: 'black',
-                      '&:hover': {
-                        backgroundColor: 'var(--mantine-color-gray-0)'
-                      }
-                    }
+                      backgroundColor: "white",
+                      borderColor: "black",
+                      color: "black",
+                      "&:hover": {
+                        backgroundColor: "var(--mantine-color-gray-0)",
+                      },
+                    },
                   }}
                 >
                   Back to Mapping
@@ -358,82 +407,103 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                   radius="md"
                   onClick={() => {
                     // Transform and submit the mapped data
-                    const mappedData = importedData.rows.map(row => {
+                    const mappedData = importedData.rows.map((row) => {
                       const transformedRow: any = {};
-                      Object.entries(mappingState).forEach(([sourceHeader, targetField]) => {
-                        if (targetField && row[sourceHeader] !== undefined) {
-                          const field = currentSheetConfig.fields.find(f => f.key === targetField);
-                          transformedRow[field?.label || targetField] = row[sourceHeader];
+                      Object.entries(mappingState).forEach(
+                        ([sourceHeader, targetField]) => {
+                          if (targetField && row[sourceHeader] !== undefined) {
+                            const field = currentSheetConfig.fields.find(
+                              (f) => f.key === targetField
+                            );
+                            transformedRow[field?.label || targetField] =
+                              row[sourceHeader];
+                          }
                         }
-                      });
+                      );
                       return transformedRow;
                     });
-                    
+
                     // Transform mapped data to DataRow[] format
                     const dataRows: any[] = mappedData.map((row, index) => ({
                       id: `row-${index}`,
-                      data: row
+                      data: row,
                     }));
-                    
+
                     events?.onWorkbookComplete?.(dataRows);
                   }}
                   styles={{
                     root: {
-                      backgroundColor: 'black',
-                      color: 'white',
-                      border: 'none',
-                      '&:hover': {
-                        backgroundColor: '#333'
-                      }
-                    }
+                      backgroundColor: "black",
+                      color: "white",
+                      border: "none",
+                      "&:hover": {
+                        backgroundColor: "#333",
+                      },
+                    },
                   }}
                 >
                   Submit {currentSheetConfig?.name} Data
                 </Button>
-                <div style={{
-                  display: 'flex',
-                  backgroundColor: 'var(--mantine-color-gray-1)',
-                  borderRadius: '6px',
-                  padding: '2px',
-                  gap: '2px'
-                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    backgroundColor: "var(--mantine-color-gray-1)",
+                    borderRadius: "6px",
+                    padding: "2px",
+                    gap: "2px",
+                  }}
+                >
                   {[
-                    { label: 'All', value: 'all', count: importedData.rows.length },
-                    { label: 'Valid', value: 'valid', count: importedData.rows.length },
-                    { label: 'Invalid', value: 'invalid', count: 0 }
+                    {
+                      label: "All",
+                      value: "all",
+                      count: importedData.rows.length,
+                    },
+                    {
+                      label: "Valid",
+                      value: "valid",
+                      count: importedData.rows.length,
+                    },
+                    { label: "Invalid", value: "invalid", count: 0 },
                   ].map((item) => (
                     <button
                       key={item.value}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '6px 12px',
-                        borderRadius: '4px',
-                        border: 'none',
-                        backgroundColor: item.value === 'all' ? 'white' : 'transparent',
-                        color: 'var(--mantine-color-gray-7)',
-                        fontSize: '13px',
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "6px 12px",
+                        borderRadius: "4px",
+                        border: "none",
+                        backgroundColor:
+                          item.value === "all" ? "white" : "transparent",
+                        color: "var(--mantine-color-gray-7)",
+                        fontSize: "13px",
                         fontWeight: 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        boxShadow: item.value === 'all' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        boxShadow:
+                          item.value === "all"
+                            ? "0 1px 2px rgba(0, 0, 0, 0.05)"
+                            : "none",
                       }}
                     >
                       <span>{item.label}</span>
                       {item.count > 0 && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          minWidth: '20px',
-                          height: '20px',
-                          borderRadius: '10px',
-                          backgroundColor: 'var(--mantine-color-gray-4)',
-                          color: 'white',
-                          fontSize: '11px',
-                          fontWeight: 600
-                        }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: "20px",
+                            height: "20px",
+                            borderRadius: "10px",
+                            backgroundColor: "var(--mantine-color-gray-4)",
+                            color: "white",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                        >
                           {item.count}
                         </div>
                       )}
@@ -442,44 +512,50 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                 </div>
               </Group>
             </Group>
-            
+
             {/* Divider between header and table */}
             <Divider my="md" />
-            
+
             {/* Table section with mapped data - scrollable */}
             <ScrollArea h={600}>
-              <Table 
+              <Table
                 striped={false}
-                highlightOnHover={true} 
+                highlightOnHover={true}
                 withTableBorder
                 withColumnBorders
-                style={{ 
-                  backgroundColor: 'white',
-                  borderCollapse: 'collapse',
-                  width: '100%'
+                style={{
+                  backgroundColor: "white",
+                  borderCollapse: "collapse",
+                  width: "100%",
                 }}
               >
                 <Table.Thead>
-                  <Table.Tr style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                  <Table.Tr
+                    style={{ backgroundColor: "var(--mantine-color-gray-0)" }}
+                  >
                     {Object.entries(mappingState)
                       .filter(([_, targetField]) => targetField)
                       .map(([_, targetField]) => {
-                        const field = currentSheetConfig.fields.find(f => f.key === targetField);
+                        const field = currentSheetConfig.fields.find(
+                          (f) => f.key === targetField
+                        );
                         return (
-                          <Table.Th 
-                            key={targetField} 
-                            style={{ 
-                              color: 'var(--mantine-color-gray-8)',
+                          <Table.Th
+                            key={targetField}
+                            style={{
+                              color: "var(--mantine-color-gray-8)",
                               fontWeight: 500,
-                              fontSize: '12px',
-                              borderBottom: '1px solid var(--mantine-color-gray-3)',
-                              borderRight: '1px solid var(--mantine-color-gray-3)',
-                              backgroundColor: 'var(--mantine-color-gray-0)',
-                              padding: '6px 10px',
-                              minWidth: '120px',
-                              position: 'sticky',
+                              fontSize: "12px",
+                              borderBottom:
+                                "1px solid var(--mantine-color-gray-3)",
+                              borderRight:
+                                "1px solid var(--mantine-color-gray-3)",
+                              backgroundColor: "var(--mantine-color-gray-0)",
+                              padding: "6px 10px",
+                              minWidth: "120px",
+                              position: "sticky",
                               top: 0,
-                              zIndex: 1
+                              zIndex: 1,
                             }}
                           >
                             {field?.label || targetField}
@@ -494,18 +570,20 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                       {Object.entries(mappingState)
                         .filter(([_, targetField]) => targetField)
                         .map(([sourceHeader, targetField]) => (
-                          <Table.Td 
+                          <Table.Td
                             key={`${index}-${targetField}`}
                             style={{
-                              borderBottom: '1px solid var(--mantine-color-gray-3)',
-                              borderRight: '1px solid var(--mantine-color-gray-3)',
-                              padding: '6px 10px',
-                              fontSize: '12px',
-                              color: 'var(--mantine-color-gray-8)',
-                              backgroundColor: 'white'
+                              borderBottom:
+                                "1px solid var(--mantine-color-gray-3)",
+                              borderRight:
+                                "1px solid var(--mantine-color-gray-3)",
+                              padding: "6px 10px",
+                              fontSize: "12px",
+                              color: "var(--mantine-color-gray-8)",
+                              backgroundColor: "white",
                             }}
                           >
-                            {row[sourceHeader] || ''}
+                            {row[sourceHeader] || ""}
                           </Table.Td>
                         ))}
                     </Table.Tr>
@@ -520,7 +598,7 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
             {/* Top section - title and controls */}
             <Group justify="space-between" align="center">
               <Text size="sm" c="gray.8" fw={500}>
-                {currentSheetConfig?.name || 'Data Sheet'}
+                {currentSheetConfig?.name || "Data Sheet"}
               </Text>
               <Group gap="md">
                 {/* Submit button - only show if there's mapped data */}
@@ -530,103 +608,128 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                     radius="md"
                     onClick={() => {
                       // Transform and submit the mapped data
-                      const mappedData = importedData.rows.map(row => {
+                      const mappedData = importedData.rows.map((row) => {
                         const transformedRow: any = {};
-                        Object.entries(mappingState).forEach(([sourceHeader, targetField]) => {
-                          if (targetField && row[sourceHeader] !== undefined) {
-                            const field = currentSheetConfig.fields.find(f => f.key === targetField);
-                            transformedRow[field?.label || targetField] = row[sourceHeader];
+                        Object.entries(mappingState).forEach(
+                          ([sourceHeader, targetField]) => {
+                            if (
+                              targetField &&
+                              row[sourceHeader] !== undefined
+                            ) {
+                              const field = currentSheetConfig.fields.find(
+                                (f) => f.key === targetField
+                              );
+                              transformedRow[field?.label || targetField] =
+                                row[sourceHeader];
+                            }
                           }
-                        });
+                        );
                         return transformedRow;
                       });
-                      
+
                       // Transform mapped data to DataRow[] format
                       const dataRows: any[] = mappedData.map((row, index) => ({
                         id: `row-${index}`,
-                        data: row
+                        data: row,
                       }));
-                      
+
                       events?.onWorkbookComplete?.(dataRows);
                     }}
                     styles={{
                       root: {
-                        backgroundColor: 'black',
-                        color: 'white',
-                        border: 'none',
-                        '&:hover': {
-                          backgroundColor: '#333'
-                        }
-                      }
+                        backgroundColor: "black",
+                        color: "white",
+                        border: "none",
+                        "&:hover": {
+                          backgroundColor: "#333",
+                        },
+                      },
                     }}
                   >
                     Submit {currentSheetConfig?.name} Data
                   </Button>
                 )}
-                <div style={{
-                  display: 'flex',
-                  backgroundColor: 'var(--mantine-color-gray-1)',
-                  borderRadius: '6px',
-                  padding: '2px',
-                  gap: '2px'
-                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    backgroundColor: "var(--mantine-color-gray-1)",
+                    borderRadius: "6px",
+                    padding: "2px",
+                    gap: "2px",
+                  }}
+                >
                   {[
-                    { label: 'All', value: 'all', count: totalRows },
-                    { label: 'Valid', value: 'valid', count: validRows },
-                    { label: 'Invalid', value: 'invalid', count: invalidRows }
+                    { label: "All", value: "all", count: totalRows },
+                    { label: "Valid", value: "valid", count: validRows },
+                    { label: "Invalid", value: "invalid", count: invalidRows },
                   ].map((item) => (
                     <button
                       key={item.value}
-                      onClick={() => setSelectedFilter(item.value as 'all' | 'valid' | 'invalid')}
+                      onClick={() =>
+                        setSelectedFilter(
+                          item.value as "all" | "valid" | "invalid"
+                        )
+                      }
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '6px 12px',
-                        borderRadius: '4px',
-                        border: 'none',
-                        backgroundColor: item.value === selectedFilter ? 'white' : 'transparent',
-                        color: 'var(--mantine-color-gray-7)',
-                        fontSize: '13px',
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "6px 12px",
+                        borderRadius: "4px",
+                        border: "none",
+                        backgroundColor:
+                          item.value === selectedFilter
+                            ? "white"
+                            : "transparent",
+                        color: "var(--mantine-color-gray-7)",
+                        fontSize: "13px",
                         fontWeight: 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        boxShadow: item.value === selectedFilter ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        boxShadow:
+                          item.value === selectedFilter
+                            ? "0 1px 2px rgba(0, 0, 0, 0.05)"
+                            : "none",
                       }}
                       onMouseEnter={(e) => {
                         if (item.value !== selectedFilter) {
-                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(255, 255, 255, 0.5)";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (item.value !== selectedFilter) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.backgroundColor = "transparent";
                         }
                       }}
                     >
                       <span>{item.label}</span>
                       {(item.count > 0 || isCalculatingValidation) && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          minWidth: '20px',
-                          height: '20px',
-                          borderRadius: '10px',
-                          backgroundColor: 'var(--mantine-color-gray-4)',
-                          color: 'white',
-                          fontSize: '11px',
-                          fontWeight: 600
-                        }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: "20px",
+                            height: "20px",
+                            borderRadius: "10px",
+                            backgroundColor: "var(--mantine-color-gray-4)",
+                            color: "white",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                        >
                           {isCalculatingValidation ? (
-                            <div style={{
-                              width: '10px',
-                              height: '10px',
-                              border: '2px solid white',
-                              borderTop: '2px solid transparent',
-                              borderRadius: '50%',
-                              animation: 'spin 1s linear infinite'
-                            }} />
+                            <div
+                              style={{
+                                width: "10px",
+                                height: "10px",
+                                border: "2px solid white",
+                                borderTop: "2px solid transparent",
+                                borderRadius: "50%",
+                                animation: "spin 1s linear infinite",
+                              }}
+                            />
                           ) : (
                             item.count
                           )}
@@ -643,277 +746,377 @@ const CellvioWorkbook: React.FC<CellvioSDKProps> = ({
                 `}</style>
               </Group>
             </Group>
-            
+
             {/* Divider between header and table */}
             <Divider my="md" />
-            
+
             {/* Table section */}
-            <Box style={{ position: 'relative', minHeight: '600px', overflow: 'hidden' }}>
-                {/* Background table grid */}
-                <Box style={{ position: 'absolute', inset: 0, zIndex: 1, padding: '16px' }}>
-                  <div 
-                    ref={setTableContainerRef}
-                    style={{ 
-                      height: '100%', 
-                      minHeight: '400px', 
-                      overflow: 'hidden' 
-                    }}
-                  >
-                    {currentSheetConfig && (
-                      <Table 
-                        striped={false}
-                        highlightOnHover={false} 
-                        withTableBorder
-                        withColumnBorders
-                        style={{ 
-                          height: '100%',
-                          opacity: isManualEntryMode ? 1 : 0.98,
-                          filter: isManualEntryMode ? 'none' : 'blur(0.5px)',
-                          pointerEvents: isManualEntryMode ? 'auto' : 'none',
-                          backgroundColor: 'white',
-                          borderCollapse: 'collapse',
-                          tableLayout: 'fixed',
-                          width: '100%'
+            <Box
+              style={{
+                position: "relative",
+                minHeight: "600px",
+                overflow: "hidden",
+              }}
+            >
+              {/* Background table grid */}
+              <Box
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 1,
+                  padding: "16px",
+                }}
+              >
+                <div
+                  ref={setTableContainerRef}
+                  style={{
+                    height: "100%",
+                    minHeight: "400px",
+                    overflow: "hidden",
+                  }}
+                >
+                  {currentSheetConfig && (
+                    <Table
+                      striped={false}
+                      highlightOnHover={false}
+                      withTableBorder
+                      withColumnBorders
+                      style={{
+                        height: "100%",
+                        opacity: isManualEntryMode ? 1 : 0.98,
+                        filter: isManualEntryMode ? "none" : "blur(0.5px)",
+                        pointerEvents: isManualEntryMode ? "auto" : "none",
+                        backgroundColor: "white",
+                        borderCollapse: "collapse",
+                        tableLayout: "fixed",
+                        width: "100%",
+                      }}
+                    >
+                      <Table.Thead>
+                        <Table.Tr
+                          style={{
+                            backgroundColor: "var(--mantine-color-gray-0)",
+                          }}
+                        >
+                          {currentSheetConfig.fields.map((field) => (
+                            <Table.Th
+                              key={field.key}
+                              style={{
+                                color: isManualEntryMode
+                                  ? "var(--mantine-color-gray-8)"
+                                  : "var(--mantine-color-gray-5)",
+                                fontWeight: 500,
+                                fontSize: "12px",
+                                height: "24px",
+                                borderBottom:
+                                  "1px solid var(--mantine-color-gray-3)",
+                                borderRight:
+                                  "1px solid var(--mantine-color-gray-3)",
+                                backgroundColor: "var(--mantine-color-gray-0)",
+                                padding: "6px 10px",
+                                width: `${
+                                  100 / currentSheetConfig.fields.length
+                                }%`,
+                                minWidth: "120px",
+                                maxWidth: `${
+                                  100 / currentSheetConfig.fields.length
+                                }%`,
+                              }}
+                            >
+                              {field.label}
+                            </Table.Th>
+                          ))}
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {/* Generate editable rows for manual entry - dynamic row count */}
+                        {(() => {
+                          const visibleDataRows = Array.from(
+                            { length: maxRows },
+                            (_, i) => i
+                          ).filter(isRowVisible);
+                          const totalRows = [];
+
+                          // Add visible data rows
+                          visibleDataRows.forEach((originalIndex) => {
+                            totalRows.push({ type: "data", originalIndex });
+                          });
+
+                          // Add blank rows to reach maxRows total
+                          const blanksNeeded = maxRows - visibleDataRows.length;
+                          for (let i = 0; i < blanksNeeded; i++) {
+                            totalRows.push({
+                              type: "blank",
+                              originalIndex: maxRows + i,
+                            });
+                          }
+
+                          return totalRows.map((row, displayIndex) => (
+                            <Table.Tr
+                              key={
+                                row.type === "data"
+                                  ? `data-${row.originalIndex}`
+                                  : `blank-${row.originalIndex}`
+                              }
+                              style={{ backgroundColor: "white" }}
+                            >
+                              {currentSheetConfig.fields.map((field) => {
+                                const isDataRow = row.type === "data";
+                                const rowIndex = isDataRow
+                                  ? row.originalIndex
+                                  : row.originalIndex;
+
+                                return (
+                                  <Table.Td
+                                    key={field.key}
+                                    style={{
+                                      color: "var(--mantine-color-gray-5)",
+                                      fontSize: "12px",
+                                      padding: "0",
+                                      borderRight:
+                                        "1px solid var(--mantine-color-gray-3)",
+                                      borderBottom:
+                                        displayIndex === totalRows.length - 1
+                                          ? "2px solid var(--mantine-color-gray-3)"
+                                          : "1px solid var(--mantine-color-gray-3)",
+                                      backgroundColor: "white",
+                                      minHeight: "24px",
+                                      width: `${
+                                        100 / currentSheetConfig.fields.length
+                                      }%`,
+                                      minWidth: "120px",
+                                      maxWidth: `${
+                                        100 / currentSheetConfig.fields.length
+                                      }%`,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    {isManualEntryMode ? (
+                                      <input
+                                        type={
+                                          field.type === "number"
+                                            ? "number"
+                                            : "text"
+                                        }
+                                        value={
+                                          isDataRow
+                                            ? manualEntryData[
+                                                `manual-${row.originalIndex}`
+                                              ]?.[field.key] || ""
+                                            : ""
+                                        }
+                                        onChange={(e) => {
+                                          if (isDataRow) {
+                                            handleManualEntryChange(
+                                              row.originalIndex,
+                                              field.key,
+                                              e.target.value
+                                            );
+                                          } else {
+                                            // For blank rows, start new data entry
+                                            handleManualEntryChange(
+                                              rowIndex,
+                                              field.key,
+                                              e.target.value
+                                            );
+                                          }
+                                        }}
+                                        style={{
+                                          width: "100%",
+                                          height: "24px",
+                                          minHeight: "24px",
+                                          maxHeight: "24px",
+                                          border:
+                                            isDataRow &&
+                                            manualEntryErrors[
+                                              `manual-${row.originalIndex}`
+                                            ]?.[field.key]
+                                              ? "1px solid var(--mantine-color-red-5)"
+                                              : "1px solid transparent",
+                                          outline: "none",
+                                          padding: "6px 10px",
+                                          fontSize: "12px",
+                                          backgroundColor:
+                                            isDataRow &&
+                                            manualEntryErrors[
+                                              `manual-${row.originalIndex}`
+                                            ]?.[field.key]
+                                              ? "var(--mantine-color-red-0)"
+                                              : "transparent",
+                                          color: "var(--mantine-color-gray-8)",
+                                          boxSizing: "border-box",
+                                          minWidth: 0,
+                                          borderRadius: "0px",
+                                          transition:
+                                            "border-color 0.1s ease, background-color 0.1s ease",
+                                        }}
+                                        onFocus={(e) => {
+                                          const errorKey = isDataRow
+                                            ? `manual-${row.originalIndex}`
+                                            : `manual-${rowIndex}`;
+                                          if (
+                                            !manualEntryErrors[errorKey]?.[
+                                              field.key
+                                            ]
+                                          ) {
+                                            e.target.style.border =
+                                              "1px solid black";
+                                            e.target.style.borderRadius = "2px";
+                                          }
+                                        }}
+                                        onBlur={(e) => {
+                                          const errorKey = isDataRow
+                                            ? `manual-${row.originalIndex}`
+                                            : `manual-${rowIndex}`;
+                                          if (
+                                            !manualEntryErrors[errorKey]?.[
+                                              field.key
+                                            ]
+                                          ) {
+                                            e.target.style.border =
+                                              "1px solid transparent";
+                                            e.target.style.borderRadius = "0px";
+                                          }
+                                        }}
+                                        title={
+                                          (isDataRow &&
+                                            manualEntryErrors[
+                                              `manual-${row.originalIndex}`
+                                            ]?.[field.key]) ||
+                                          undefined
+                                        }
+                                      />
+                                    ) : (
+                                      <div
+                                        style={{
+                                          padding: "6px 10px",
+                                          height: "24px",
+                                          minHeight: "24px",
+                                          boxSizing: "border-box",
+                                          display: "flex",
+                                          alignItems: "center",
+                                        }}
+                                      >
+                                        {/* Always blank - no sample text */}
+                                      </div>
+                                    )}
+                                  </Table.Td>
+                                );
+                              })}
+                            </Table.Tr>
+                          ));
+                        })()}
+                      </Table.Tbody>
+                    </Table>
+                  )}
+                </div>
+              </Box>
+
+              {/* Overlay with centered content - hidden in manual entry mode */}
+              {!isManualEntryMode && (
+                <Flex
+                  align="center"
+                  justify="center"
+                  direction="column"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 3,
+                    backgroundColor: "rgba(255, 255, 255, 0.02)", // Only 2% overlay
+                    backdropFilter: "none",
+                  }}
+                >
+                  <Stack align="center" gap="sm">
+                    <div style={{ textAlign: "center" }}>
+                      <Title order={2} size="sm" fw={600} c="gray.8">
+                        Drag and drop or upload a file to get started
+                      </Title>
+                    </div>
+
+                    <Stack gap="md" align="center">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        color="dark"
+                        leftSection={<IconUpload size={15} />}
+                        loading={isUploading}
+                        onClick={() => {
+                          // Trigger file upload using the existing FileImport component logic
+                          const input = document.createElement("input");
+                          input.type = "file";
+                          input.accept = ".csv,.xlsx,.xls";
+                          input.onchange = async (e) => {
+                            const file = (e.target as HTMLInputElement)
+                              .files?.[0];
+                            if (file) {
+                              try {
+                                setIsUploading(true);
+                                // Use the same file processing logic as FileImport
+                                const { parseCSV, parseExcel } = await import(
+                                  "../utils/dataProcessing"
+                                );
+                                let data;
+
+                                if (file.name.endsWith(".csv")) {
+                                  data = await parseCSV(file);
+                                } else {
+                                  data = await parseExcel(file);
+                                }
+
+                                handleDataImported(data);
+                              } catch (error) {
+                                console.error("Error processing file:", error);
+                              } finally {
+                                setIsUploading(false);
+                              }
+                            }
+                          };
+                          input.click();
+                        }}
+                        styles={{
+                          root: {
+                            backgroundColor: "white",
+                            borderColor: "gray",
+                            color: "black",
+                            fontSize: "12px",
+                            "&:hover": {
+                              backgroundColor: "var(--mantine-color-gray-0)",
+                            },
+                          },
                         }}
                       >
-                        <Table.Thead>
-                          <Table.Tr style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                            {currentSheetConfig.fields.map((field) => (
-                              <Table.Th 
-                                key={field.key} 
-                                style={{ 
-                                  color: isManualEntryMode ? 'var(--mantine-color-gray-8)' : 'var(--mantine-color-gray-5)',
-                                  fontWeight: 500,
-                                  fontSize: '12px',
-                                  height: '24px',
-                                  borderBottom: '1px solid var(--mantine-color-gray-3)',
-                                  borderRight: '1px solid var(--mantine-color-gray-3)',
-                                  backgroundColor: 'var(--mantine-color-gray-0)',
-                                  padding: '6px 10px',
-                                  width: `${100 / currentSheetConfig.fields.length}%`,
-                                  minWidth: '120px',
-                                  maxWidth: `${100 / currentSheetConfig.fields.length}%`
-                                }}
-                              >
-                                {field.label}
-                              </Table.Th>
-                            ))}
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                          {/* Generate editable rows for manual entry - dynamic row count */}
-                          {(() => {
-                            const visibleDataRows = Array.from({ length: maxRows }, (_, i) => i).filter(isRowVisible);
-                            const totalRows = [];
-                            
-                            // Add visible data rows
-                            visibleDataRows.forEach((originalIndex) => {
-                              totalRows.push({ type: 'data', originalIndex });
-                            });
-                            
-                            // Add blank rows to reach maxRows total
-                            const blanksNeeded = maxRows - visibleDataRows.length;
-                            for (let i = 0; i < blanksNeeded; i++) {
-                              totalRows.push({ type: 'blank', originalIndex: maxRows + i });
-                            }
-                            
-                            return totalRows.map((row, displayIndex) => (
-                              <Table.Tr key={row.type === 'data' ? `data-${row.originalIndex}` : `blank-${row.originalIndex}`} style={{ backgroundColor: 'white' }}>
-                                {currentSheetConfig.fields.map((field) => {
-                                  const isDataRow = row.type === 'data';
-                                  const rowIndex = isDataRow ? row.originalIndex : row.originalIndex;
-                                  
-                                  return (
-                                    <Table.Td 
-                                      key={field.key} 
-                                      style={{ 
-                                        color: 'var(--mantine-color-gray-5)',
-                                        fontSize: '12px',
-                                        padding: '0',
-                                        borderRight: '1px solid var(--mantine-color-gray-3)',
-                                        borderBottom: displayIndex === totalRows.length - 1 ? '2px solid var(--mantine-color-gray-3)' : '1px solid var(--mantine-color-gray-3)',
-                                        backgroundColor: 'white',
-                                        minHeight: '24px',
-                                        width: `${100 / currentSheetConfig.fields.length}%`,
-                                        minWidth: '120px',
-                                        maxWidth: `${100 / currentSheetConfig.fields.length}%`,
-                                        overflow: 'hidden'
-                                      }}
-                                    >
-                                      {isManualEntryMode ? (
-                                        <input
-                                          type={field.type === 'number' ? 'number' : 'text'}
-                                          value={isDataRow ? (manualEntryData[`manual-${row.originalIndex}`]?.[field.key] || '') : ''}
-                                          onChange={(e) => {
-                                            if (isDataRow) {
-                                              handleManualEntryChange(row.originalIndex, field.key, e.target.value);
-                                            } else {
-                                              // For blank rows, start new data entry
-                                              handleManualEntryChange(rowIndex, field.key, e.target.value);
-                                            }
-                                          }}
-                                          style={{
-                                            width: '100%',
-                                            height: '24px',
-                                            minHeight: '24px',
-                                            maxHeight: '24px',
-                                            border: (isDataRow && manualEntryErrors[`manual-${row.originalIndex}`]?.[field.key]) 
-                                              ? '1px solid var(--mantine-color-red-5)' 
-                                              : '1px solid transparent',
-                                            outline: 'none',
-                                            padding: '6px 10px',
-                                            fontSize: '12px',
-                                            backgroundColor: (isDataRow && manualEntryErrors[`manual-${row.originalIndex}`]?.[field.key]) 
-                                              ? 'var(--mantine-color-red-0)' 
-                                              : 'transparent',
-                                            color: 'var(--mantine-color-gray-8)',
-                                            boxSizing: 'border-box',
-                                            minWidth: 0,
-                                            borderRadius: '0px',
-                                            transition: 'border-color 0.1s ease, background-color 0.1s ease'
-                                          }}
-                                          onFocus={(e) => {
-                                            const errorKey = isDataRow ? `manual-${row.originalIndex}` : `manual-${rowIndex}`;
-                                            if (!manualEntryErrors[errorKey]?.[field.key]) {
-                                              e.target.style.border = '1px solid black';
-                                              e.target.style.borderRadius = '2px';
-                                            }
-                                          }}
-                                          onBlur={(e) => {
-                                            const errorKey = isDataRow ? `manual-${row.originalIndex}` : `manual-${rowIndex}`;
-                                            if (!manualEntryErrors[errorKey]?.[field.key]) {
-                                              e.target.style.border = '1px solid transparent';
-                                              e.target.style.borderRadius = '0px';
-                                            }
-                                          }}
-                                          title={(isDataRow && manualEntryErrors[`manual-${row.originalIndex}`]?.[field.key]) || undefined}
-                                        />
-                                      ) : (
-                                        <div style={{ 
-                                          padding: '6px 10px', 
-                                          height: '24px',
-                                          minHeight: '24px',
-                                          boxSizing: 'border-box',
-                                          display: 'flex',
-                                          alignItems: 'center'
-                                        }}>
-                                          {/* Always blank - no sample text */}
-                                        </div>
-                                      )}
-                                    </Table.Td>
-                                  );
-                                })}
-                              </Table.Tr>
-                            ));
-                          })()}
-                        </Table.Tbody>
-                      </Table>
-                    )}
-                  </div>
-                </Box>
+                        Upload file
+                      </Button>
 
-                {/* Overlay with centered content - hidden in manual entry mode */}
-                {!isManualEntryMode && (
-                  <Flex 
-                    align="center" 
-                    justify="center" 
-                    direction="column" 
-                    style={{ 
-                      position: 'absolute', 
-                      inset: 0, 
-                      zIndex: 3,
-                      backgroundColor: 'rgba(255, 255, 255, 0.02)', // Only 2% overlay
-                      backdropFilter: 'none'
-                    }}
-                  >
-                    <Stack align="center" gap="sm">
-                      <div style={{ textAlign: 'center' }}>
-                        <Title order={2} size="sm" fw={600} c="gray.8">
-                          Drag and drop or upload a file to get started
-                        </Title>
-                      </div>
-                      
-                      <Stack gap="md" align="center">
-                        <Button 
-                          size="xs" 
-                          variant="outline"
-                          color="dark"
-                          leftSection={<IconUpload size={15} />}
-                          loading={isUploading}
-                          onClick={() => {
-                            // Trigger file upload using the existing FileImport component logic
-                            const input = document.createElement('input');
-                            input.type = 'file';
-                            input.accept = '.csv,.xlsx,.xls';
-                            input.onchange = async (e) => {
-                              const file = (e.target as HTMLInputElement).files?.[0];
-                              if (file) {
-                                try {
-                                  setIsUploading(true);
-                                  // Use the same file processing logic as FileImport
-                                  const { parseCSV, parseExcel } = await import('../utils/dataProcessing');
-                                  let data;
-                                  
-                                  if (file.name.endsWith('.csv')) {
-                                    data = await parseCSV(file);
-                                  } else {
-                                    data = await parseExcel(file);
-                                  }
-                                  
-                                  handleDataImported(data);
-                                } catch (error) {
-                                  console.error('Error processing file:', error);
-                                } finally {
-                                  setIsUploading(false);
-                                }
-                              }
-                            };
-                            input.click();
-                          }}
-                          styles={{
-                            root: {
-                              backgroundColor: 'white',
-                              borderColor: 'gray',
-                              color: 'black',
-                              fontSize: '12px',
-                              '&:hover': {
-                                backgroundColor: 'var(--mantine-color-gray-0)'
-                              }
-                            }
-                          }}
-                        >
-                          Upload file
-                        </Button>
-                        
-                        <Button 
-                          size="xs" 
-                          variant="outline"
-                          color="dark"
-                          leftSection={<IconEdit size={15} />}
-                          onClick={() => {
-                            // Switch to manual entry mode
-                            setIsManualEntryMode(true);
-                          }}
-                          styles={{
-                            root: {
-                              backgroundColor: 'white',
-                              borderColor: 'gray',
-                              color: 'black',
-                              fontSize: '12px',
-                              '&:hover': {
-                                backgroundColor: 'var(--mantine-color-gray-0)'
-                              }
-                            }
-                          }}
-                        >
-                          Manually enter data
-                        </Button>
-                      </Stack>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        color="dark"
+                        leftSection={<IconEdit size={15} />}
+                        onClick={() => {
+                          // Switch to manual entry mode
+                          setIsManualEntryMode(true);
+                        }}
+                        styles={{
+                          root: {
+                            backgroundColor: "white",
+                            borderColor: "gray",
+                            color: "black",
+                            fontSize: "12px",
+                            "&:hover": {
+                              backgroundColor: "var(--mantine-color-gray-0)",
+                            },
+                          },
+                        }}
+                      >
+                        Manually enter data
+                      </Button>
                     </Stack>
-                  </Flex>
-                )}
-              </Box>
-            </Card>
+                  </Stack>
+                </Flex>
+              )}
+            </Box>
+          </Card>
         )}
       </Container>
 
