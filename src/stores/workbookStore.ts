@@ -7,10 +7,16 @@ import {
   MappingState,
   DataRow,
   ValidationError,
+  FieldMapping,
+  TransformRegistry,
 } from "@/types";
 import {
   processImportedData,
   generateAutoMapping,
+  processImportedDataWithMappings,
+  mappingStateToFieldMappings,
+  fieldMappingsToMappingState,
+  defaultTransforms,
 } from "@/utils/dataProcessing";
 
 interface WorkbookActions {
@@ -26,9 +32,12 @@ interface WorkbookActions {
   setMapping: (mapping: MappingState) => void;
   updateMapping: (sourceColumn: string, targetField: string | null) => void;
   generateAutoMapping: () => void;
+  setFieldMappings: (fieldMappings: FieldMapping[]) => void;
+  setTransformRegistry: (registry: TransformRegistry) => void;
 
   // Data processing
   processData: () => void;
+  setProcessedRows: (rows: DataRow[]) => void;
   updateRowData: (rowId: string, fieldKey: string, value: any) => void;
   deleteRow: (rowId: string) => void;
   addRow: () => void;
@@ -54,6 +63,8 @@ const initialState: WorkbookState = {
   processedData: [],
   validationErrors: [],
   isLoading: false,
+  pipelineMappings: undefined,
+  transformRegistry: defaultTransforms,
 };
 
 export const useWorkbookStore = create<WorkbookStore>()(
@@ -65,8 +76,18 @@ export const useWorkbookStore = create<WorkbookStore>()(
         set({ config });
         // Set first sheet as current if available
         if (config.sheets && config.sheets.length > 0) {
-          set({ currentSheet: config.sheets[0].slug });
+          const first = config.sheets[0];
+          set({
+            currentSheet: first.slug,
+            pipelineMappings: first.pipelineMappings,
+          });
         }
+      },
+
+      setProcessedRows: (rows) => {
+        set({ processedData: rows });
+        const validationErrors = rows.flatMap((r) => r.errors || []);
+        set({ validationErrors });
       },
 
       setCurrentSheet: (sheetSlug) => {
@@ -77,6 +98,9 @@ export const useWorkbookStore = create<WorkbookStore>()(
           mappingState: {},
           processedData: [],
           validationErrors: [],
+          pipelineMappings: get().config.sheets?.find(
+            (s) => s.slug === sheetSlug
+          )?.pipelineMappings,
         });
       },
 
@@ -89,18 +113,36 @@ export const useWorkbookStore = create<WorkbookStore>()(
         );
 
         if (currentSheetConfig) {
-          const autoMapping = generateAutoMapping(
-            data.headers,
-            currentSheetConfig.fields,
-            currentSheetConfig.mappingConfidenceThreshold
-          );
-          set({ mappingState: autoMapping });
+          // Prefer backend-compatible pipeline mappings if provided on sheet
+          let pipelineMappings = currentSheetConfig.pipelineMappings;
+          if (!pipelineMappings) {
+            const autoMapping = generateAutoMapping(
+              data.headers,
+              currentSheetConfig.fields,
+              currentSheetConfig.mappingConfidenceThreshold
+            );
+            // keep legacy mapping state
+            set({ mappingState: autoMapping });
+            pipelineMappings = {
+              fieldMappings: mappingStateToFieldMappings(autoMapping),
+            };
+          } else {
+            // Keep mappingState in sync for UI components relying on it
+            set({
+              mappingState: fieldMappingsToMappingState(
+                pipelineMappings.fieldMappings
+              ),
+            });
+          }
 
-          // Process data immediately with auto-mapping
-          const processedData = processImportedData(
+          set({ pipelineMappings });
+
+          // Process data with backend-compatible structure
+          const processedData = processImportedDataWithMappings(
             data,
             currentSheetConfig.fields,
-            autoMapping
+            pipelineMappings,
+            state.transformRegistry || defaultTransforms
           );
           set({ processedData });
 
@@ -120,8 +162,32 @@ export const useWorkbookStore = create<WorkbookStore>()(
       },
 
       setMapping: (mapping) => {
-        set({ mappingState: mapping });
+        set({
+          mappingState: mapping,
+          pipelineMappings: {
+            fieldMappings: mappingStateToFieldMappings(mapping),
+          },
+        });
         // Reprocess data with new mapping
+        get().processData();
+      },
+
+      setFieldMappings: (fieldMappings) => {
+        const state = get();
+        set({
+          pipelineMappings: {
+            ...(state.pipelineMappings || {}),
+            fieldMappings,
+          },
+          // keep legacy mappingState synchronized for components relying on it
+          mappingState: fieldMappingsToMappingState(fieldMappings),
+        });
+        get().processData();
+      },
+
+      setTransformRegistry: (registry) => {
+        set({ transformRegistry: registry });
+        // Re-run processing because transforms may change output
         get().processData();
       },
 
@@ -131,7 +197,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
           ...state.mappingState,
           [sourceColumn]: targetField,
         };
-        set({ mappingState: newMapping });
+        set({
+          mappingState: newMapping,
+          pipelineMappings: {
+            fieldMappings: mappingStateToFieldMappings(newMapping),
+          },
+        });
         // Reprocess data with updated mapping
         get().processData();
       },
@@ -150,7 +221,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
             currentSheetConfig.fields,
             currentSheetConfig.mappingConfidenceThreshold
           );
-          set({ mappingState: autoMapping });
+          set({
+            mappingState: autoMapping,
+            pipelineMappings: {
+              fieldMappings: mappingStateToFieldMappings(autoMapping),
+            },
+          });
           get().processData();
         }
       },
@@ -164,11 +240,18 @@ export const useWorkbookStore = create<WorkbookStore>()(
         );
 
         if (currentSheetConfig) {
-          const processedData = processImportedData(
-            state.importedData,
-            currentSheetConfig.fields,
-            state.mappingState
-          );
+          const processedData = state.pipelineMappings
+            ? processImportedDataWithMappings(
+                state.importedData,
+                currentSheetConfig.fields,
+                state.pipelineMappings,
+                state.transformRegistry || defaultTransforms
+              )
+            : processImportedData(
+                state.importedData,
+                currentSheetConfig.fields,
+                state.mappingState
+              );
           set({ processedData });
 
           // Extract validation errors
@@ -256,7 +339,7 @@ export const useWorkbookStore = create<WorkbookStore>()(
       },
     }),
     {
-      name: "cellvio-workbook-store",
+      name: "filefeed-workbook-store",
     }
   )
 );

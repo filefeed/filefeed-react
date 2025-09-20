@@ -12,11 +12,18 @@ import {
 import { notifications } from "@mantine/notifications";
 import { FileImportProps, ImportedData } from "../types";
 import { parseCSV, parseExcel } from "../utils/dataProcessing";
+import {
+  offloadAndProcessFile,
+  OFFLOAD_THRESHOLD_BYTES,
+  isBackendClientConfigured,
+} from "../utils/backendClient";
 
 const FileImport: React.FC<FileImportProps> = ({
   onDataImported,
   acceptedTypes = [".csv", ".xlsx", ".xls"],
-  maxFileSize = 5 * 1024 * 1024, // 5MB default
+  maxFileSize = 5 * 1024 * 1024, // Dropzone validation limit
+  onOffloadComplete,
+  offloadContext,
 }) => {
   const handleFileDrop = useCallback(
     async (files: FileWithPath[]) => {
@@ -25,8 +32,34 @@ const FileImport: React.FC<FileImportProps> = ({
       const file = files[0];
 
       try {
-        let importedData: ImportedData;
+        // Automatic offload for large files if backend client configured
+        if (file.size > OFFLOAD_THRESHOLD_BYTES && isBackendClientConfigured()) {
+          notifications.show({
+            title: "Processing large file",
+            message: `File ${file.name} is larger than ${Math.round(OFFLOAD_THRESHOLD_BYTES / 1024 / 1024)}MB. Handing off to server...`,
+            color: "blue",
+          });
 
+          if (!onOffloadComplete) {
+            throw new Error("Offload path not wired: onOffloadComplete missing");
+          }
+
+          const rows = await offloadAndProcessFile(file, {
+            sheetSlug: (offloadContext as any)?.sheetSlug || "",
+            pipelineMappings: (offloadContext as any)?.pipelineMappings,
+            workbook: (offloadContext as any)?.workbook,
+          });
+          onOffloadComplete(rows);
+          notifications.show({
+            title: "Server processing complete",
+            message: `Received ${rows.length} processed rows`,
+            color: "green",
+          });
+          return;
+        }
+
+        // Local lightweight parsing
+        let importedData: ImportedData;
         if (file.name.toLowerCase().endsWith(".csv")) {
           importedData = await parseCSV(file);
         } else if (

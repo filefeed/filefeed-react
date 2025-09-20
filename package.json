@@ -1,15 +1,28 @@
 {
-  "name": "cellvio-sdk",
+  "name": "filefeed-sdk",
   "version": "0.1.0",
   "description": "A powerful data onboarding SDK for importing, mapping, validating, and transforming structured data",
   "main": "dist/index.js",
+  "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build-lib": "tsc && rollup -c",
+    "build-lib": "tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && rollup -c",
+    "prepublishOnly": "npm run build-lib",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -23,51 +36,62 @@
     "react",
     "typescript"
   ],
-  "author": "Cellvio Team",
+  "author": "Filefeed Team",
   "license": "MIT",
   "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@mantine/core": "^7.3.0",
-    "@mantine/hooks": "^7.3.0",
-    "@mantine/form": "^7.3.0",
-    "@mantine/dropzone": "^7.3.0",
-    "@mantine/notifications": "^7.3.0",
-    "@mantine/modals": "^7.3.0",
-    "@mantine/dates": "^7.3.0",
-    "@tabler/icons-react": "^2.44.0",
-    "papaparse": "^5.4.1",
-    "xlsx": "^0.18.5",
     "date-fns": "^2.30.0",
+    "jschardet": "^3.1.4",
     "lodash": "^4.17.21",
-    "react-table": "^7.8.0",
+    "papaparse": "^5.4.1",
     "react-beautiful-dnd": "^13.1.1",
+    "react-table": "^7.8.0",
+    "xlsx": "^0.18.5",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
-    "@types/node": "^20.8.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/papaparse": "^5.3.14",
+    "next": "^14.0.0",
+    "tsc-alias": "^1.8.10",
+    "@rollup/plugin-alias": "^5.1.0",
+    "@mantine/core": "^7.3.0",
+    "@mantine/dates": "^7.3.0",
+    "@mantine/dropzone": "^7.3.0",
+    "@mantine/form": "^7.3.0",
+    "@mantine/hooks": "^7.3.0",
+    "@mantine/modals": "^7.3.0",
+    "@mantine/notifications": "^7.3.0",
+    "@tabler/icons-react": "^2.44.0",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.5",
+    "@storybook/addon-essentials": "^7.5.0",
+    "@storybook/react": "^7.5.0",
     "@types/lodash": "^4.14.200",
-    "@types/react-table": "^7.7.17",
+    "@types/node": "^20.8.0",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^18.2.0",
     "@types/react-beautiful-dnd": "^13.1.6",
-    "typescript": "^5.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/react-table": "^7.7.17",
+    "autoprefixer": "^10.4.16",
     "eslint": "^8.51.0",
     "eslint-config-next": "^14.0.0",
-    "tailwindcss": "^3.3.0",
-    "autoprefixer": "^10.4.16",
     "postcss": "^8.4.31",
-    "@storybook/react": "^7.5.0",
-    "@storybook/addon-essentials": "^7.5.0",
     "rollup": "^4.0.0",
-    "@rollup/plugin-typescript": "^11.1.5",
-    "@rollup/plugin-node-resolve": "^15.2.3",
-    "@rollup/plugin-commonjs": "^25.0.7"
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5.2.0"
   },
   "peerDependencies": {
     "react": ">=16.8.0",
-    "react-dom": ">=16.8.0"
+    "react-dom": ">=16.8.0",
+    "@mantine/core": ">=7.0.0",
+    "@mantine/hooks": ">=7.0.0",
+    "@mantine/dropzone": ">=7.0.0",
+    "@mantine/notifications": ">=7.0.0",
+    "@mantine/modals": ">=7.0.0",
+    "@mantine/dates": ">=7.0.0",
+    "@tabler/icons-react": ">=2.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

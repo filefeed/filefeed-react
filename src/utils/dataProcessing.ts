@@ -1,21 +1,65 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { detect as detectEncoding } from "jschardet";
 import {
   ImportedData,
   FieldConfig,
   ValidationRule,
   ValidationError,
   DataRow,
+  FieldMapping,
+  PipelineMappings,
+  TransformRegistry,
 } from "@/types";
 
 // File parsing utilities
 export const parseCSV = (file: File): Promise<ImportedData> => {
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors.length > 0) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const buffer = reader.result as ArrayBuffer;
+        const sampleBytes = new Uint8Array(
+          buffer.slice(0, Math.min(buffer.byteLength, 512 * 1024))
+        );
+        // jschardet expects a string; provide a best-effort 1:1 byte mapping via windows-1252
+        // for detection purposes only
+        let sampleString = "";
+        try {
+          sampleString = new TextDecoder("windows-1252").decode(sampleBytes);
+        } catch {
+          // Fallback to latin-1 style mapping using code points
+          sampleString = Array.from(sampleBytes)
+            .map((c) => String.fromCharCode(c))
+            .join("");
+        }
+        const detection = detectEncoding(sampleString);
+        let encoding = (detection.encoding || "utf-8").toLowerCase();
+        // If detection confidence is low, default to utf-8
+        if (!detection.encoding || (detection.confidence || 0) < 0.2) {
+          encoding = "utf-8";
+        }
+
+        let text: string;
+        try {
+          text = new TextDecoder(encoding as string).decode(new Uint8Array(buffer));
+        } catch (_err) {
+          // Fallback to utf-8 if the encoding label isn't supported in this browser
+          text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
+        }
+
+        const results = Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          transform: (value: string) => (typeof value === "string" ? value.trim() : value),
+          transformHeader: (header: string) => (typeof header === "string" ? header.trim() : header),
+        });
+
+        if (
+          results.errors &&
+          results.errors.length > 0 &&
+          results.errors.some((e) => e.type !== "FieldMismatch")
+        ) {
           reject(new Error(`CSV parsing error: ${results.errors[0].message}`));
           return;
         }
@@ -26,11 +70,135 @@ export const parseCSV = (file: File): Promise<ImportedData> => {
           fileName: file.name,
           fileType: "csv",
         });
-      },
-      error: (error) => reject(error),
-    });
+      } catch (error: any) {
+        reject(error);
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsArrayBuffer(file);
   });
 };
+
+// Backend-compatible defaults and helpers (CSV/XLSX lightweight parity)
+export const defaultTransforms: TransformRegistry = {
+  toLowerCase: (v: any) => (v == null ? v : String(v).toLowerCase()),
+  toUpperCase: (v: any) => (v == null ? v : String(v).toUpperCase()),
+  capitalize: (v: any) => {
+    if (v == null) return v;
+    const s = String(v).toLowerCase();
+    return s.replace(/\b\w/g, (c) => c.toUpperCase());
+  },
+  trim: (v: any) => (v == null ? v : String(v).trim()),
+  toNumber: (v: any) => (v == null || v === "" ? null : Number(v)),
+  formatPhoneNumber: (v: any) => (v == null ? v : String(v).replace(/[^0-9]/g, "")),
+  formatEmail: (v: any) => (v == null ? v : String(v).trim().toLowerCase()),
+};
+
+export const applyNamedTransform = (
+  value: any,
+  transformName?: string,
+  registry?: TransformRegistry
+): any => {
+  if (!transformName) return value;
+  const fn = registry?.[transformName];
+  try {
+    return fn ? fn(value) : value;
+  } catch {
+    return value;
+  }
+};
+
+export const mappingStateToFieldMappings = (
+  mapping: Record<string, string | null>
+): FieldMapping[] =>
+  Object.entries(mapping)
+    .filter(([, target]) => !!target)
+    .map(([source, target]) => ({ source, target: target as string }));
+
+export const fieldMappingsToMappingState = (
+  fieldMappings: FieldMapping[]
+): Record<string, string | null> => {
+  const out: Record<string, string | null> = {};
+  for (const m of fieldMappings) out[m.source] = m.target || null;
+  return out;
+};
+
+export const validatePipelineConfig = (
+  fields: FieldConfig[],
+  pipeline: PipelineMappings,
+  availableTransforms: string[] = Object.keys(defaultTransforms)
+): string[] => {
+  const errors: string[] = [];
+  const required = new Set(fields.filter(f => f.required).map(f => f.key));
+  const mappedTargets = new Set<string>();
+  for (const m of pipeline.fieldMappings || []) {
+    if (m.target) mappedTargets.add(m.target);
+    if (m.transform && !availableTransforms.includes(m.transform)) {
+      errors.push(`Transform '${m.transform}' referenced by mapping ${m.source} -> ${m.target} is not available`);
+    }
+  }
+  for (const key of required) {
+    if (!mappedTargets.has(key)) errors.push(`Missing mapping for required field '${key}'`);
+  }
+  return errors;
+};
+
+export const processImportedDataWithMappings = (
+  importedData: ImportedData,
+  fields: FieldConfig[],
+  pipeline: PipelineMappings,
+  registry: TransformRegistry = defaultTransforms
+): DataRow[] => {
+  const rows: DataRow[] = importedData.rows.map((row, index) => {
+    const processed: Record<string, any> = {};
+    const errors: ValidationError[] = [];
+
+    for (const m of pipeline.fieldMappings || []) {
+      const { source, target, transform } = m;
+      if (!(source in row)) continue;
+      const field = fields.find(f => f.key === target);
+      if (!field) continue;
+      let v = row[source];
+      v = applyNamedTransform(v, transform, registry);
+      const coerced = transformValue(v, field.type);
+      processed[target] = coerced;
+      errors.push(...validateField(coerced, field, index));
+    }
+
+    for (const f of fields) {
+      if (f.required && !(f.key in processed)) {
+        errors.push({ row: index, field: f.key, message: `${f.label} is required but not mapped`, severity: "error" });
+      }
+    }
+
+    return { id: `row-${index}`, data: processed, errors, isValid: errors.filter(e => e.severity === "error").length === 0 };
+  });
+
+  // Uniqueness across all rows
+  const uniqueFields = fields.filter(f => f.unique);
+  for (const f of uniqueFields) {
+    const seen = new Map<string, number>();
+    rows.forEach((r, idx) => {
+      const val = r.data[f.key];
+      if (val === undefined || val === null || val === "") return;
+      const key = String(val);
+      if (seen.has(key)) {
+        const first = seen.get(key)!;
+        const push = (rowIdx: number) => {
+          rows[rowIdx].errors.push({ row: rowIdx, field: f.key, message: `${f.label} must be unique. Duplicate value '${key}' found`, severity: "error" });
+          rows[rowIdx].isValid = false;
+        };
+        push(first);
+        push(idx);
+      } else {
+        seen.set(key, idx);
+      }
+    });
+  }
+
+  return rows;
+};
+
 
 export const parseExcel = (file: File): Promise<ImportedData> => {
   return new Promise((resolve, reject) => {

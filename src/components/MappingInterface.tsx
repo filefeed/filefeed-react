@@ -9,35 +9,21 @@ import {
   Badge,
   Stack,
   Button,
-  Grid,
-  Alert,
-  Progress,
-  ActionIcon,
   Box,
-  Title,
   Flex,
-  Divider,
   Paper,
   ThemeIcon,
-  Tooltip,
   ScrollArea,
 } from "@mantine/core";
 import {
   IconArrowRight,
-  IconWand,
-  IconCheck,
-  IconX,
-  IconAlertTriangle,
-  IconRefresh,
-  IconGripVertical,
-  IconDatabase,
   IconFileText,
-  IconLink,
-  IconUnlink,
-  IconTarget,
-  IconChevronRight,
 } from "@tabler/icons-react";
-import { MappingInterfaceProps } from "../types";
+import { MappingInterfaceProps, FieldMapping } from "../types";
+import {
+  fieldMappingsToMappingState,
+  mappingStateToFieldMappings,
+} from "../utils/dataProcessing";
 
 const MappingInterface: React.FC<MappingInterfaceProps> = ({
   importedHeaders,
@@ -49,6 +35,9 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   onBack,
   onContinue,
   onExit,
+  fieldMappings,
+  onFieldMappingsChange,
+  transformRegistry,
 }) => {
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
@@ -59,8 +48,35 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
     sourceColumn: string,
     targetField: string | null
   ) => {
+    // Update legacy mapping state
     const newMapping = { ...mapping, [sourceColumn]: targetField };
     onMappingChange(newMapping);
+    // If advanced mapping is used, keep FieldMapping[] in sync
+    if (onFieldMappingsChange) {
+      const fm: FieldMapping[] = fieldMappings
+        ? [...fieldMappings]
+        : mappingStateToFieldMappings(newMapping);
+      const idx = fm.findIndex((m) => m.source === sourceColumn);
+      if (idx >= 0) {
+        if (targetField) fm[idx] = { ...fm[idx], target: targetField };
+        else fm.splice(idx, 1);
+      } else if (targetField) {
+        fm.push({ source: sourceColumn, target: targetField });
+      }
+      onFieldMappingsChange(fm);
+    }
+  };
+
+  const handleTransformUpdate = (sourceColumn: string, transformName: string | null) => {
+    if (!onFieldMappingsChange) return;
+    const current = fieldMappings || mappingStateToFieldMappings(mapping);
+    const idx = current.findIndex((m) => m.source === sourceColumn);
+    if (idx >= 0) {
+      const updated = [...current];
+      const t = transformName || undefined;
+      updated[idx] = { ...updated[idx], transform: t };
+      onFieldMappingsChange(updated);
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, sourceColumn: string) => {
@@ -95,12 +111,16 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
 
   const incomingFieldsCount = importedHeaders.length;
   const destinationFieldsCount = fields.length;
-  const mappedCount = Object.values(mapping).filter(
+  const effectiveMapping = fieldMappings
+    ? fieldMappingsToMappingState(fieldMappings)
+    : mapping;
+
+  const mappedCount = Object.values(effectiveMapping).filter(
     (value) => value !== null
   ).length;
-  const unmappedSources = importedHeaders.filter((header) => !mapping[header]);
-  const mappedSources = importedHeaders.filter((header) => mapping[header]);
-  const usedTargets = Object.values(mapping).filter(Boolean);
+  const unmappedSources = importedHeaders.filter((header) => !effectiveMapping[header]);
+  const mappedSources = importedHeaders.filter((header) => effectiveMapping[header]);
+  const usedTargets = Object.values(effectiveMapping).filter(Boolean);
   const availableTargets = fields.filter(
     (field) => !usedTargets.includes(field.key)
   );
@@ -183,7 +203,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
             <ScrollArea style={{ height: "440px" }}>
               <Stack gap="xs">
                 {importedHeaders.map((header) => {
-                  const mappedField = mapping[header];
+                  const mappedField = effectiveMapping[header];
                   const targetField = fields.find((f) => f.key === mappedField);
                   const isMapped = !!mappedField;
 
@@ -217,7 +237,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                         </Box>
 
                         {/* Right side - Destination field (50%) */}
-                        <Box style={{ flex: 1 }}>
+                        <Box style={{ flex: 1, display: 'flex', gap: 8 }}>
                           <Select
                             placeholder="Select field"
                             value={mappedField}
@@ -242,6 +262,21 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                               },
                             }}
                           />
+                          {transformRegistry && isMapped && (
+                            <Select
+                              placeholder="Transform"
+                              value={
+                                (fieldMappings || []).find((m) => m.source === header)?.transform || null
+                              }
+                              onChange={(value) => handleTransformUpdate(header, value)}
+                              data={[{ value: "", label: "None" }, ...Object.keys(transformRegistry).map((name) => ({ value: name, label: name }))]}
+                              size="xs"
+                              clearable
+                              styles={{
+                                input: { fontSize: "12px", backgroundColor: "white", cursor: "pointer" },
+                              }}
+                            />
+                          )}
                         </Box>
                       </Flex>
                     </Card>

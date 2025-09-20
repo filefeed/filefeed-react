@@ -3,96 +3,96 @@
 @tailwind utilities;
 
 /* Mantine CSS imports */
-@import '@mantine/core/styles.css';
-@import '@mantine/dropzone/styles.css';
-@import '@mantine/notifications/styles.css';
-@import '@mantine/dates/styles.css';
+@import "@mantine/core/styles.css";
+@import "@mantine/dropzone/styles.css";
+@import "@mantine/notifications/styles.css";
+@import "@mantine/dates/styles.css";
 
 /* Custom SDK styles */
-.cellvio-workbook {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+.filefeed-workbook {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
 
-.cellvio-workbook[data-theme="dark"] {
+.filefeed-workbook[data-theme="dark"] {
   background-color: #1a1b1e;
   color: #c1c2c5;
 }
 
-.cellvio-workbook[data-theme="light"] {
+.filefeed-workbook[data-theme="light"] {
   background-color: #ffffff;
   color: #212529;
 }
 
 /* Custom table styles for better data display */
-.cellvio-data-table {
+.filefeed-data-table {
   font-size: 14px;
 }
 
-.cellvio-data-table th {
+.filefeed-data-table th {
   background-color: #f8f9fa;
   font-weight: 600;
   border-bottom: 2px solid #dee2e6;
 }
 
-.cellvio-data-table td {
+.filefeed-data-table td {
   border-bottom: 1px solid #dee2e6;
   vertical-align: middle;
 }
 
-.cellvio-data-table tr:hover {
+.filefeed-data-table tr:hover {
   background-color: #f8f9fa;
 }
 
 /* Validation error styles */
-.cellvio-error-cell {
+.filefeed-error-cell {
   background-color: #fff5f5;
   border-left: 3px solid #e53e3e;
 }
 
-.cellvio-warning-cell {
+.filefeed-warning-cell {
   background-color: #fffbeb;
   border-left: 3px solid #d69e2e;
 }
 
 /* Mapping interface styles */
-.cellvio-mapping-card {
+.filefeed-mapping-card {
   transition: all 0.2s ease;
 }
 
-.cellvio-mapping-card:hover {
+.filefeed-mapping-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.cellvio-mapping-connected {
+.filefeed-mapping-connected {
   border: 2px solid #38a169;
   background-color: #f0fff4;
 }
 
 /* File import styles */
-.cellvio-dropzone {
+.filefeed-dropzone {
   border: 2px dashed #cbd5e0;
   border-radius: 8px;
   transition: all 0.2s ease;
 }
 
-.cellvio-dropzone:hover {
+.filefeed-dropzone:hover {
   border-color: #4299e1;
   background-color: #ebf8ff;
 }
 
-.cellvio-dropzone[data-accept] {
+.filefeed-dropzone[data-accept] {
   border-color: #38a169;
   background-color: #f0fff4;
 }
 
-.cellvio-dropzone[data-reject] {
+.filefeed-dropzone[data-reject] {
   border-color: #e53e3e;
   background-color: #fff5f5;
 }
 
 /* Progress indicators */
-.cellvio-progress-step {
+.filefeed-progress-step {
   position: relative;
   padding: 8px 16px;
   border-radius: 20px;
@@ -101,32 +101,32 @@
   transition: all 0.2s ease;
 }
 
-.cellvio-progress-step.active {
+.filefeed-progress-step.active {
   background-color: #4299e1;
   color: white;
 }
 
-.cellvio-progress-step.completed {
+.filefeed-progress-step.completed {
   background-color: #38a169;
   color: white;
 }
 
-.cellvio-progress-step.pending {
+.filefeed-progress-step.pending {
   background-color: #e2e8f0;
   color: #718096;
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .cellvio-workbook {
+  .filefeed-workbook {
     padding: 8px;
   }
 
-  .cellvio-data-table {
+  .filefeed-data-table {
     font-size: 12px;
   }
 
-  .cellvio-mapping-card {
+  .filefeed-mapping-card {
     margin-bottom: 16px;
   }
 }
@@ -144,26 +144,26 @@
   }
 }
 
-.cellvio-fade-in {
+.filefeed-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
 
 /* Custom scrollbar */
-.cellvio-scrollbar::-webkit-scrollbar {
+.filefeed-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-.cellvio-scrollbar::-webkit-scrollbar-track {
+.filefeed-scrollbar::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 4px;
 }
 
-.cellvio-scrollbar::-webkit-scrollbar-thumb {
+.filefeed-scrollbar::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 4px;
 }
 
-.cellvio-scrollbar::-webkit-scrollbar-thumb:hover {
+.filefeed-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }

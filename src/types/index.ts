@@ -1,4 +1,4 @@
-// Core configuration interfaces for the cellvio-sdk
+// Core configuration interfaces for the filefeed-sdk
 export interface CreateWorkbookConfig {
   name: string;
   labels?: string[];
@@ -16,6 +16,8 @@ export interface SheetConfig {
   slug: string;
   fields: FieldConfig[];
   mappingConfidenceThreshold?: number;
+  // Optional backend-compatible mappings for lightweight client-side processing
+  pipelineMappings?: PipelineMappings;
 }
 
 export interface FieldConfig {
@@ -58,6 +60,31 @@ export interface MappingState {
   [sourceColumn: string]: string | null; // maps to field key
 }
 
+// New mapping types aligned with backend structure
+export interface FieldMapping {
+  source: string;
+  target: string;
+  transform?: string;
+  confidence?: number;
+}
+
+export interface PipelineMappings {
+  options?: {
+    delimiter?: string;
+    skipHeaderRow?: boolean;
+    detectTypes?: boolean;
+    validateData?: boolean;
+  };
+  fieldMappings: FieldMapping[];
+  // For server-side compatibility (backend expects transform code strings)
+  transformations?: Record<string, string>;
+  validations?: Record<string, any>;
+  [key: string]: any;
+}
+
+// Frontend-only registry of transform implementations
+export type TransformRegistry = Record<string, (value: any) => any>;
+
 export interface ValidationError {
   row: number;
   field: string;
@@ -80,21 +107,26 @@ export interface WorkbookState {
   processedData: DataRow[];
   validationErrors: ValidationError[];
   isLoading: boolean;
+  // Backend-compatible structures (optional in state)
+  pipelineMappings?: PipelineMappings;
+  transformRegistry?: TransformRegistry;
 }
 
 // Event types for SDK callbacks
-export interface CellvioEvents {
+export interface FilefeedEvents {
   onDataImported?: (data: ImportedData) => void;
   onMappingChanged?: (mapping: MappingState) => void;
   onValidationComplete?: (errors: ValidationError[]) => void;
   onActionTriggered?: (action: Action, data: DataRow[]) => void;
   onWorkbookComplete?: (data: DataRow[]) => void;
+  onStepChange?: (step: "import" | "mapping" | "review") => void;
+  onReset?: () => void;
 }
 
 // Component props
-export interface CellvioSDKProps {
+export interface FilefeedSDKProps {
   config: CreateWorkbookConfig;
-  events?: CellvioEvents;
+  events?: FilefeedEvents;
   theme?: "light" | "dark";
   className?: string;
 }
@@ -103,6 +135,14 @@ export interface FileImportProps {
   onDataImported: (data: ImportedData) => void;
   acceptedTypes?: string[];
   maxFileSize?: number;
+  // Internal: called when large file offload completes with processed rows
+  onOffloadComplete?: (rows: DataRow[]) => void;
+  // Internal: context used to offload large files automatically
+  offloadContext?: {
+    sheetSlug: string;
+    pipelineMappings?: PipelineMappings;
+    workbook?: CreateWorkbookConfig;
+  };
 }
 
 export interface DataTableProps {
@@ -122,4 +162,13 @@ export interface MappingInterfaceProps {
   onBack?: () => void;
   onContinue?: () => void;
   onExit?: () => void;
+  // New optional props for advanced mapping with transforms
+  fieldMappings?: FieldMapping[];
+  onFieldMappingsChange?: (mappings: FieldMapping[]) => void;
+  transformRegistry?: TransformRegistry;
+}
+
+// Imperative ref interface for FilefeedWorkbook component
+export interface FilefeedWorkbookRef {
+  reset: () => void;
 }

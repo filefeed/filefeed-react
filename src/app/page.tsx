@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import CellvioWorkbook from "../components/CellvioWorkbook";
+import FilefeedWorkbook from "../components/FilefeedWorkbook";
 import { CreateWorkbookConfig } from "@/types";
 
 const demoConfig: CreateWorkbookConfig = {
@@ -243,7 +243,7 @@ export default function HomePage() {
   };
 
   return (
-    <CellvioWorkbook
+    <FilefeedWorkbook
       config={demoConfig}
       events={{
         onDataImported: handleDataImported,
@@ -253,7 +253,7 @@ export default function HomePage() {
         onWorkbookComplete: handleWorkbookComplete,
       }}
       theme="light"
-      className="cellvio-demo"
+      className="filefeed-demo"
     />
   );
 }
