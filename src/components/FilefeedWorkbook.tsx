@@ -22,13 +22,14 @@ import {
   ScrollArea,
 } from "@mantine/core";
 import { IconUpload, IconEdit } from "@tabler/icons-react";
-import { FilefeedSDKProps, FilefeedWorkbookRef } from "../types";
+import { FilefeedSDKProps, FilefeedWorkbookRef, DataRow } from "../types";
 import { useWorkbookStore } from "../stores/workbookStore";
 import MappingInterface from "./MappingInterface";
 import { Providers } from "../app/providers";
 import { useManualEntry } from "../hooks/useManualEntry";
 import { useDynamicRowCount } from "../hooks/useDynamicRowCount";
 import { useFileImport } from "../hooks/useFileImport";
+import { transformValue, validateField } from "../utils/dataProcessing";
 
 const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
   ({ config, events, theme = "light", className }, ref) => {
@@ -49,6 +50,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setFieldMappings,
       transformRegistry,
       setProcessedRows,
+      setMapping,
+      clearImportedData,
       reset: resetStore,
     } = useWorkbookStore();
 
@@ -122,6 +125,51 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         updateMapping(sourceColumn, targetField as string | null);
       });
       events?.onMappingChanged?.(mapping);
+    };
+
+    // Build processed rows from manual entry state (independent of file upload)
+    const buildManualProcessedData = (): DataRow[] => {
+      if (!currentSheetConfig) return [];
+      // Keep order stable by sorting by original manual index
+      const entries = Object.entries(manualEntryData)
+        .map(([rowId, data]) => ({
+          rowId,
+          index: Number(rowId.replace(/^manual-/, "")) || 0,
+          data,
+        }))
+        // include only rows that have some data entered
+        .filter(({ data }) =>
+          Object.values(data || {}).some((v) => String(v ?? "").trim() !== "")
+        )
+        .sort((a, b) => a.index - b.index);
+
+      return entries.map(({ index, data }) => {
+        const processed: Record<string, any> = {};
+        const errors: any[] = [];
+        currentSheetConfig.fields.forEach((field) => {
+          const raw = (data as any)[field.key];
+          const coerced = transformValue(raw, field.type);
+          processed[field.key] = coerced;
+          errors.push(...validateField(coerced, field, index));
+        });
+        return {
+          id: `manual-row-${index}`,
+          data: processed,
+          errors,
+          isValid: errors.filter((e) => e.severity === "error").length === 0,
+        } as DataRow;
+      });
+    };
+
+    const hasManualRows = totalRows > 0;
+
+    const handleSubmit = () => {
+      if (isManualEntryMode && hasManualRows) {
+        const manualRows = buildManualProcessedData();
+        events?.onWorkbookComplete?.(manualRows);
+      } else {
+        events?.onWorkbookComplete?.(processedData);
+      }
     };
 
     return (
@@ -348,13 +396,11 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     {currentSheetConfig?.name || "Data Sheet"}
                   </Text>
                   <Group gap="md">
-                    {Object.keys(mappingState).length > 0 && (
+                    {(isManualEntryMode ? hasManualRows : Object.keys(mappingState).length > 0) && (
                       <Button
                         size="xs"
                         radius="md"
-                        onClick={() => {
-                          events?.onWorkbookComplete?.(processedData);
-                        }}
+                        onClick={handleSubmit}
                         styles={{
                           root: {
                             backgroundColor: "black",
@@ -786,7 +832,10 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             color="dark"
                             leftSection={<IconEdit size={15} />}
                             onClick={() => {
+                              // Enter manual entry mode and clear any previous import state
                               setIsManualEntryMode(true);
+                              clearImportedData();
+                              setMapping({});
                             }}
                             styles={{
                               root: {
