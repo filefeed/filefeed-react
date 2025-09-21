@@ -129,11 +129,23 @@ export const useWorkbookStore = create<WorkbookStore>()(
             };
           } else {
             // Keep mappingState in sync for UI components relying on it
-            set({
-              mappingState: fieldMappingsToMappingState(
-                pipelineMappings.fieldMappings
-              ),
+            // IMPORTANT: Restrict seed mappings to headers that actually exist in the uploaded file
+            // and dedupe by target to avoid pre-consuming all targets.
+            const filtered = (pipelineMappings.fieldMappings || []).filter(
+              (m) => data.headers.includes(m.source)
+            );
+            const seenTargets = new Set<string>();
+            const deduped = filtered.filter((m) => {
+              if (!m.target) return false;
+              if (seenTargets.has(m.target)) return false;
+              seenTargets.add(m.target);
+              return true;
             });
+            const effective = { ...pipelineMappings, fieldMappings: deduped };
+            set({
+              mappingState: fieldMappingsToMappingState(effective.fieldMappings),
+            });
+            pipelineMappings = effective;
           }
 
           set({ pipelineMappings });
