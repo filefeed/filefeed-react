@@ -1,4 +1,4 @@
-import { CreateWorkbookConfig, FieldConfig, FieldMapping } from "@/types";
+import { CreateWorkbookConfig, FieldConfig, FieldMapping } from "../types";
 
 const STORAGE_PREFIX = "filefeed:mapping:";
 

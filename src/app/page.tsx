@@ -2,7 +2,7 @@
 
 import React from "react";
 import FilefeedWorkbook from "../components/FilefeedWorkbook";
-import { CreateWorkbookConfig } from "@/types";
+import { CreateWorkbookConfig } from "../types";
 
 const demoConfig: CreateWorkbookConfig = {
   name: "Customer Data Import",

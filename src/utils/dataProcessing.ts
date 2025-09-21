@@ -10,7 +10,7 @@ import {
   FieldMapping,
   PipelineMappings,
   TransformRegistry,
-} from "@/types";
+} from "../types";
 
 // File parsing utilities
 export const parseCSV = (file: File): Promise<ImportedData> => {

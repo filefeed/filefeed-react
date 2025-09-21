@@ -9,7 +9,7 @@ import {
   ValidationError,
   FieldMapping,
   TransformRegistry,
-} from "@/types";
+} from "../types";
 import {
   processImportedData,
   generateAutoMapping,
@@ -17,7 +17,8 @@ import {
   mappingStateToFieldMappings,
   fieldMappingsToMappingState,
   defaultTransforms,
-} from "@/utils/dataProcessing";
+  validateField,
+} from "../utils/dataProcessing";
 
 interface WorkbookActions {
   // Configuration
@@ -282,7 +283,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
               const rowIndex = state.processedData.findIndex(
                 (r) => r.id === rowId
               );
-              const { validateField } = require("@/utils/dataProcessing");
               const fieldErrors = validateField(value, field, rowIndex);
               errors.push(...fieldErrors);
             }

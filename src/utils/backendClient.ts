@@ -1,4 +1,4 @@
-import { DataRow, PipelineMappings, CreateWorkbookConfig } from "@/types";
+import { DataRow, PipelineMappings, CreateWorkbookConfig } from "../types";
 
 // Hardcoded 10MB threshold for local vs. server processing
 export const OFFLOAD_THRESHOLD_BYTES = 10 * 1024 * 1024;
