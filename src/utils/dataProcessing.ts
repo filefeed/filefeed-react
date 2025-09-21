@@ -48,18 +48,46 @@ export const parseCSV = (file: File): Promise<ImportedData> => {
           text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
         }
 
-        const results = Papa.parse(text, {
+        const baseOptions = {
           header: true,
           skipEmptyLines: true,
           transform: (value: string) => (typeof value === "string" ? value.trim() : value),
           transformHeader: (header: string) => (typeof header === "string" ? header.trim() : header),
-        });
+        } as const;
 
-        if (
-          results.errors &&
-          results.errors.length > 0 &&
-          results.errors.some((e) => e.type !== "FieldMismatch")
-        ) {
+        const tryParse = (delimiter?: string) =>
+          Papa.parse(text, delimiter ? { ...baseOptions, delimiter } : baseOptions);
+
+        const hasSeriousErrors = (res: Papa.ParseResult<any>) =>
+          Array.isArray(res.errors) && res.errors.some((e) => e.type !== "FieldMismatch" && e.type !== "Delimiter");
+
+        const onlyDelimiterIssue = (res: Papa.ParseResult<any>) =>
+          Array.isArray(res.errors) && res.errors.length > 0 && res.errors.every((e) => e.type === "Delimiter");
+
+        let results = tryParse();
+
+        // If auto-detection failed or we got suspiciously few fields, try common delimiters
+        if (onlyDelimiterIssue(results) || ((results.meta.fields || []).length <= 1)) {
+          const candidates = [";", "\t", "|", ","];
+          let best = results;
+          let bestFields = (best.meta.fields || []).length;
+          for (const d of candidates) {
+            const r = tryParse(d);
+            const fieldsCount = (r.meta.fields || []).length;
+            if (!hasSeriousErrors(r) && fieldsCount > bestFields) {
+              best = r;
+              bestFields = fieldsCount;
+            }
+            if (!hasSeriousErrors(r) && fieldsCount >= 2) {
+              // Early accept once we find a reasonable delimiter
+              best = r;
+              break;
+            }
+          }
+          results = best;
+        }
+
+        if (hasSeriousErrors(results)) {
           reject(new Error(`CSV parsing error: ${results.errors[0].message}`));
           return;
         }
