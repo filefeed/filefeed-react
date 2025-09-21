@@ -98,24 +98,39 @@ export function useManualEntry(fields?: FieldConfig[]): UseManualEntryReturn {
   ) => {
     const rowId = `manual-${rowIndex}`;
 
-    // Update data
+    // Compute the row data after this change
+    const nextRowData = {
+      ...(manualEntryData[rowId] || {}),
+      [fieldKey]: value,
+    } as Record<string, any>;
+
+    // Update data state
     setManualEntryData((prev) => ({
       ...prev,
-      [rowId]: {
-        ...prev[rowId],
-        [fieldKey]: value,
-      },
+      [rowId]: nextRowData,
     }));
 
-    // Validate field
-    const error = validateField(fieldKey, value);
-    setManualEntryErrors((prev) => ({
-      ...prev,
-      [rowId]: {
-        ...prev[rowId],
-        [fieldKey]: error || "",
-      },
-    }));
+    // Determine if the entire row is empty (no non-empty values)
+    const rowHasAnyValue = Object.values(nextRowData).some(
+      (v) => v && v.toString().trim() !== ""
+    );
+
+    // Update errors: if row is entirely empty, clear all its errors
+    setManualEntryErrors((prev) => {
+      if (!rowHasAnyValue) {
+        const next = { ...prev } as Record<string, Record<string, string>>;
+        delete next[rowId];
+        return next;
+      }
+      const fieldError = validateField(fieldKey, value);
+      return {
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          [fieldKey]: fieldError || "",
+        },
+      };
+    });
   };
 
   // Recalculate validation indicator with small debounce

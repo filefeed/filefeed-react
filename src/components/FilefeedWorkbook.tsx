@@ -3,6 +3,7 @@
 import React, {
   useEffect,
   useState,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -35,6 +36,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
   ({ config, events, theme = "light", className }, ref) => {
     const [activeTab, setActiveTab] = useState<string>("import");
     const [isManualEntryMode, setIsManualEntryMode] = useState(false);
+    const [reviewFilter, setReviewFilter] = useState<"all" | "valid" | "invalid">("all");
 
     const {
       setConfig,
@@ -52,6 +54,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setProcessedRows,
       setMapping,
       clearImportedData,
+      updateRowData,
       reset: resetStore,
     } = useWorkbookStore();
 
@@ -187,6 +190,19 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       }
     };
 
+    // Compute review counts and visible rows for uploaded data review
+    const allCount = processedData.length;
+    const validCount = useMemo(
+      () => processedData.filter((r) => r.isValid).length,
+      [processedData]
+    );
+    const invalidCount = allCount - validCount;
+    const visibleProcessedRows = useMemo(() => {
+      if (reviewFilter === "valid") return processedData.filter((r) => r.isValid);
+      if (reviewFilter === "invalid") return processedData.filter((r) => !r.isValid);
+      return processedData;
+    }, [processedData, reviewFilter]);
+
     return (
       <Providers>
         <div
@@ -265,20 +281,13 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       }}
                     >
                       {[
-                        {
-                          label: "All",
-                          value: "all",
-                          count: importedData.rows.length,
-                        },
-                        {
-                          label: "Valid",
-                          value: "valid",
-                          count: importedData.rows.length,
-                        },
-                        { label: "Invalid", value: "invalid", count: 0 },
+                        { label: "All", value: "all", count: allCount },
+                        { label: "Valid", value: "valid", count: validCount },
+                        { label: "Invalid", value: "invalid", count: invalidCount },
                       ].map((item) => (
                         <button
                           key={item.value}
+                          onClick={() => setReviewFilter(item.value as "all" | "valid" | "invalid")}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -287,14 +296,14 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             borderRadius: "4px",
                             border: "none",
                             backgroundColor:
-                              item.value === "all" ? "white" : "transparent",
+                              item.value === reviewFilter ? "white" : "transparent",
                             color: "var(--mantine-color-gray-7)",
                             fontSize: "13px",
                             fontWeight: 500,
                             cursor: "pointer",
                             transition: "all 0.15s ease",
                             boxShadow:
-                              item.value === "all"
+                              item.value === reviewFilter
                                 ? "0 1px 2px rgba(0, 0, 0, 0.05)"
                                 : "none",
                           }}
@@ -377,27 +386,59 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {importedData.rows.map((row, index) => (
-                        <Table.Tr key={index}>
+                      {visibleProcessedRows.map((pRow, index) => (
+                        <Table.Tr key={pRow.id || index}>
                           {Object.entries(mappingState)
                             .filter(([_, targetField]) => targetField)
-                            .map(([sourceHeader, targetField]) => (
-                              <Table.Td
-                                key={`${index}-${targetField}`}
-                                style={{
-                                  borderBottom:
-                                    "1px solid var(--mantine-color-gray-3)",
-                                  borderRight:
-                                    "1px solid var(--mantine-color-gray-3)",
-                                  padding: "6px 10px",
-                                  fontSize: "12px",
-                                  color: "var(--mantine-color-gray-8)",
-                                  backgroundColor: "white",
-                                }}
-                              >
-                                {row[sourceHeader] || ""}
-                              </Table.Td>
-                            ))}
+                            .map(([_, targetField]) => {
+                              const field = currentSheetConfig.fields.find(
+                                (f) => f.key === targetField
+                              );
+                              const value = (pRow.data || {})[targetField as string] ?? "";
+                              const fieldHasError = (pRow.errors || []).some(
+                                (e) => e.field === targetField
+                              );
+                              const firstError = (pRow.errors || []).find(
+                                (e) => e.field === targetField
+                              );
+                              return (
+                                <Table.Td
+                                  key={`${pRow.id}-${String(targetField)}`}
+                                  style={{
+                                    borderBottom:
+                                      "1px solid var(--mantine-color-gray-3)",
+                                    borderRight:
+                                      "1px solid var(--mantine-color-gray-3)",
+                                    padding: 0,
+                                    backgroundColor: fieldHasError
+                                      ? "var(--mantine-color-red-0)"
+                                      : "white",
+                                  }}
+                                >
+                                  <input
+                                    type={field?.type === "number" ? "number" : "text"}
+                                    value={String(value)}
+                                    onChange={(e) =>
+                                      updateRowData(pRow.id, String(targetField), e.target.value)
+                                    }
+                                    title={firstError?.message}
+                                    style={{
+                                      width: "100%",
+                                      height: "30px",
+                                      border: fieldHasError
+                                        ? "1px solid var(--mantine-color-red-5)"
+                                        : "1px solid transparent",
+                                      outline: "none",
+                                      padding: "6px 10px",
+                                      fontSize: "12px",
+                                      backgroundColor: "transparent",
+                                      color: "var(--mantine-color-gray-8)",
+                                      boxSizing: "border-box",
+                                    }}
+                                  />
+                                </Table.Td>
+                              );
+                            })}
                         </Table.Tr>
                       ))}
                     </Table.Tbody>
@@ -411,6 +452,27 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     {currentSheetConfig?.name || "Data Sheet"}
                   </Text>
                   <Group gap="md">
+                    {isManualEntryMode && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        color="dark"
+                        onClick={hardResetToImport}
+                        styles={{
+                          root: {
+                            backgroundColor: "white",
+                            borderColor: "gray",
+                            color: "black",
+                            fontSize: "12px",
+                            "&:hover": {
+                              backgroundColor: "var(--mantine-color-gray-0)",
+                            },
+                          },
+                        }}
+                      >
+                        Back
+                      </Button>
+                    )}
                     {(isManualEntryMode || Object.keys(mappingState).length > 0) && (
                       <Button
                         size="xs"
