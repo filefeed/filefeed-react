@@ -15,10 +15,7 @@ import {
   ThemeIcon,
   ScrollArea,
 } from "@mantine/core";
-import {
-  IconArrowRight,
-  IconFileText,
-} from "@tabler/icons-react";
+import { IconArrowRight, IconFileText } from "@tabler/icons-react";
 import { MappingInterfaceProps, FieldMapping } from "../types";
 import {
   fieldMappingsToMappingState,
@@ -67,7 +64,10 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
     }
   };
 
-  const handleTransformUpdate = (sourceColumn: string, transformName: string | null) => {
+  const handleTransformUpdate = (
+    sourceColumn: string,
+    transformName: string | null
+  ) => {
     if (!onFieldMappingsChange) return;
     const current = fieldMappings || mappingStateToFieldMappings(mapping);
     const idx = current.findIndex((m) => m.source === sourceColumn);
@@ -118,8 +118,12 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   const mappedCount = Object.values(effectiveMapping).filter(
     (value) => value !== null
   ).length;
-  const unmappedSources = importedHeaders.filter((header) => !effectiveMapping[header]);
-  const mappedSources = importedHeaders.filter((header) => effectiveMapping[header]);
+  const unmappedSources = importedHeaders.filter(
+    (header) => !effectiveMapping[header]
+  );
+  const mappedSources = importedHeaders.filter(
+    (header) => effectiveMapping[header]
+  );
   const usedTargets = Object.values(effectiveMapping).filter(Boolean);
   const availableTargets = fields.filter(
     (field) => !usedTargets.includes(field.key)
@@ -237,7 +241,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                         </Box>
 
                         {/* Right side - Destination field (50%) */}
-                        <Box style={{ flex: 1, display: 'flex', gap: 8 }}>
+                        <Box style={{ flex: 1, display: "flex", gap: 8 }}>
                           <Select
                             placeholder="Select field"
                             value={mappedField}
@@ -251,6 +255,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             searchable
                             clearable
                             size="xs"
+                            comboboxProps={{ withinPortal: true, zIndex: 9999 }}
                             styles={{
                               input: {
                                 fontSize: "12px",
@@ -266,14 +271,31 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             <Select
                               placeholder="Transform"
                               value={
-                                (fieldMappings || []).find((m) => m.source === header)?.transform || null
+                                (fieldMappings || []).find(
+                                  (m) => m.source === header
+                                )?.transform || null
                               }
-                              onChange={(value) => handleTransformUpdate(header, value)}
-                              data={[{ value: "", label: "None" }, ...Object.keys(transformRegistry).map((name) => ({ value: name, label: name }))]}
+                              onChange={(value) =>
+                                handleTransformUpdate(header, value)
+                              }
+                              data={[
+                                { value: "", label: "None" },
+                                ...Object.keys(transformRegistry).map(
+                                  (name) => ({ value: name, label: name })
+                                ),
+                              ]}
                               size="xs"
                               clearable
+                              comboboxProps={{
+                                withinPortal: true,
+                                zIndex: 4000,
+                              }}
                               styles={{
-                                input: { fontSize: "12px", backgroundColor: "white", cursor: "pointer" },
+                                input: {
+                                  fontSize: "12px",
+                                  backgroundColor: "white",
+                                  cursor: "pointer",
+                                },
                               }}
                             />
                           )}
