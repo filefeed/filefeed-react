@@ -1,13 +1,9 @@
 // Main SDK exports
 export { default as FilefeedWorkbook } from "./components/FilefeedWorkbook";
-export { default as FileImport } from "./components/FileImport";
-export { default as DataTable } from "./components/DataTable";
-export { default as MappingInterface } from "./components/MappingInterface";
 // Public provider export for consumers who want to wrap components manually
 export { Providers as FilefeedProvider } from "./app/providers";
 
-// Store exports
-export { useWorkbookStore } from "./stores/workbookStore";
+// (No store exports — internal by default)
 
 // Type exports
 export type {
@@ -24,9 +20,6 @@ export type {
   WorkbookState,
   FilefeedEvents,
   FilefeedSDKProps,
-  FileImportProps,
-  DataTableProps,
-  MappingInterfaceProps,
   // New types for backend-compatible mapping
   FieldMapping,
   PipelineMappings,

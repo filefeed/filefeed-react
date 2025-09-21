@@ -1,8 +1,8 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
-import alias from '@rollup/plugin-alias';
 import postcss from 'rollup-plugin-postcss';
+import terser from '@rollup/plugin-terser';
 import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
@@ -31,7 +31,6 @@ export default {
     'react/jsx-dev-runtime',
   ],
   onwarn(warning, warn) {
-    // Silence Mantine ESM files that include 'use client' directives.
     if (
       warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
       typeof warning.message === 'string' &&
@@ -42,9 +41,6 @@ export default {
     warn(warning);
   },
   plugins: [
-    alias({
-      entries: [{ find: '@/', replacement: 'src/' }],
-    }),
     resolve({
       browser: true,
       preferBuiltins: false,
@@ -60,6 +56,11 @@ export default {
       inject: true,
       extract: false,
       minimize: true,
+    }),
+    terser({
+      format: { comments: false },
+      compress: { passes: 2 },
+      mangle: true,
     }),
   ],
 };

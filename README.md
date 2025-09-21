@@ -8,7 +8,7 @@ An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to y
 - CSV encoding detection and header/value trimming
 - Mapping UI with AI-ready structure and safe transform registry
 - Field validations (required/type/regex/min/max) + cross-row uniqueness
-- Automatic small-file client processing, auto offload >10MB to your backend (optional)
+- Automatic small-file client processing; optional paid large-file offload (>10MB) via FileFeed backend (subscription required)
 - Drop-in component with minimal config; also supports headless utilities
 - Imperative `reset()` and events for analytics/hooks
 
@@ -18,44 +18,14 @@ An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to y
 npm install filefeed-sdk
 ```
 
-Peer dependencies (install in your app if not already present):
-
-```
-npm install react react-dom @mantine/core @mantine/hooks @mantine/dropzone @mantine/notifications @mantine/modals @mantine/dates @tabler/icons-react
-```
-
-## App setup (Mantine providers)
-
-```tsx
-// app/layout.tsx (Next.js) or a top-level client component
-"use client";
-import { MantineProvider } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html>
-      <body>
-        <MantineProvider defaultColorScheme="light">
-          <Notifications />
-          {children}
-        </MantineProvider>
-      </body>
-    </html>
-  );
-}
-```
+That’s it. No additional installs, providers, or CSS imports are required. The SDK bundles its UI runtime and styles. Requires React 17+ in your app.
 
 ## Quick start
 
 ```tsx
-"use client";
 import React, { useRef } from "react";
-import FilefeedWorkbook, {
+import {
+  FilefeedWorkbook,
   type CreateWorkbookConfig,
   type FilefeedWorkbookRef,
 } from "filefeed-sdk";
@@ -105,9 +75,9 @@ export default function Page() {
 }
 ```
 
-## Large files (automatic offload, optional)
+## Large files (automatic offload — FileFeed subscription required)
 
-Configure once to automatically offload files >10MB to your backend:
+This feature is available only with an active FileFeed subscription. Offloading files larger than 10MB to the FileFeed backend is disabled by default. If you have access, configure once in your app:
 
 ```ts
 import { configureBackendClient } from "filefeed-sdk";
@@ -136,6 +106,8 @@ configureBackendClient({
   },
 });
 ```
+
+Note: Without a subscription (or without calling `configureBackendClient`), the SDK will process files locally in the browser, regardless of size.
 
 ## Events & imperative API
 
@@ -173,21 +145,6 @@ async function process(file: File, fields: FieldConfig[]) {
   );
 }
 ```
-
-## Build and publish (library authors)
-
-```
-# build artifacts into dist/
-npm run build-lib
-
-# sanity check package contents
-npm pack
-
-# publish (needs npm login)
-npm publish --access public
-```
-
-This package ships CJS and ESM builds with type declarations and marks React/Mantine as peer dependencies to avoid duplicates.
 
 ## License
 
