@@ -2,23 +2,26 @@ import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
 import alias from '@rollup/plugin-alias';
+import postcss from 'rollup-plugin-postcss';
 import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
 
 export default {
-  input: 'src/index.ts',
+  input: 'src/client.ts',
   output: [
     {
       file: pkg.main,
       format: 'cjs',
       sourcemap: true,
       exports: 'named',
+      intro: '"use client";',
     },
     {
       file: pkg.module || 'dist/index.esm.js',
       format: 'esm',
       sourcemap: true,
+      intro: '"use client";',
     },
   ],
   external: [
@@ -26,22 +29,6 @@ export default {
     'react-dom',
     'react/jsx-runtime',
     'react/jsx-dev-runtime',
-    '@mantine/core',
-    '@mantine/hooks',
-    '@mantine/form',
-    '@mantine/dropzone',
-    '@mantine/notifications',
-    '@mantine/modals',
-    '@mantine/dates',
-    '@tabler/icons-react',
-    'papaparse',
-    'xlsx',
-    'jschardet',
-    'zustand',
-    'lodash',
-    'date-fns',
-    'react-beautiful-dnd',
-    'react-table',
   ],
   plugins: [
     alias({
@@ -57,6 +44,11 @@ export default {
       tsconfig: './tsconfig.lib.json',
       declaration: false,
       rootDir: 'src',
+    }),
+    postcss({
+      inject: true,
+      extract: false,
+      minimize: true,
     }),
   ],
 };

@@ -3,6 +3,8 @@ export { default as FilefeedWorkbook } from "./components/FilefeedWorkbook";
 export { default as FileImport } from "./components/FileImport";
 export { default as DataTable } from "./components/DataTable";
 export { default as MappingInterface } from "./components/MappingInterface";
+// Public provider export for consumers who want to wrap components manually
+export { Providers as FilefeedProvider } from "./app/providers";
 
 // Store exports
 export { useWorkbookStore } from "./stores/workbookStore";
