@@ -46,7 +46,6 @@
     "xlsx": "^0.18.5",
     "zustand": "^4.4.7",
     "@mantine/core": "^7.3.0",
-    "@mantine/modals": "^7.3.0",
     "@tabler/icons-react": "^2.44.0"
   },
   "devDependencies": {

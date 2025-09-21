@@ -24,17 +24,14 @@ import {
   ScrollArea,
 } from "@mantine/core";
 import { IconUpload, IconEdit } from "@tabler/icons-react";
-import { modals } from "@mantine/modals";
 import { FilefeedSDKProps, Action, FilefeedWorkbookRef } from "../types";
 import { useWorkbookStore } from "../stores/workbookStore";
-// Removed unused components: FileImport, DataTable
 import MappingInterface from "./MappingInterface";
 import {
   offloadAndProcessFile,
   OFFLOAD_THRESHOLD_BYTES,
   isBackendClientConfigured,
 } from "../utils/backendClient";
-import { saveFieldMappings, loadFieldMappings } from "../utils/mappingStorage";
 import { Providers } from "../app/providers";
 
 const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
@@ -49,13 +46,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
     const [manualEntryErrors, setManualEntryErrors] = useState<
       Record<string, Record<string, string>>
     >({});
-    const askedToLoadMappingRef = useRef(false);
     const [selectedFilter, setSelectedFilter] = useState<
       "all" | "valid" | "invalid"
     >("all");
     const [tableContainerRef, setTableContainerRef] =
       useState<HTMLDivElement | null>(null);
-    const [maxRows, setMaxRows] = useState(18); // Default fallback
+    const [maxRows, setMaxRows] = useState(18);
 
     const {
       setConfig,
@@ -76,12 +72,9 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       reset: resetStore,
     } = useWorkbookStore();
 
-    // Initialize workbook with config
     useEffect(() => {
       setConfig(config);
     }, [config, setConfig]);
-
-    // Notify host app when the current step changes
     useEffect(() => {
       if (events?.onStepChange) {
         if (
@@ -94,60 +87,10 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       }
     }, [activeTab, events]);
 
-    // Ask to load saved mappings after data import (only once per import)
-    useEffect(() => {
-      if (!importedData || !currentSheet) return;
-      if (askedToLoadMappingRef.current) return;
-      const currentSheetConfig = config.sheets?.find(
-        (s) => s.slug === currentSheet
-      );
-      if (!currentSheetConfig) return;
-      const saved = loadFieldMappings(
-        config,
-        currentSheet,
-        currentSheetConfig.fields
-      );
-      if (saved && saved.length > 0) {
-        askedToLoadMappingRef.current = true;
-        modals.openConfirmModal({
-          title: "Load saved mapping?",
-          children: (
-            <Text size="sm">
-              A saved column mapping was found for this sheet. Would you like to
-              apply it?
-            </Text>
-          ),
-          labels: { confirm: "Apply", cancel: "Ignore" },
-          onConfirm: () => setFieldMappings(saved),
-        });
-      }
-    }, [importedData, currentSheet, config, setFieldMappings]);
-
-    // Persist mappings whenever pipeline fieldMappings change
-    useEffect(() => {
-      const currentSheetConfig = config.sheets?.find(
-        (s) => s.slug === currentSheet
-      );
-      if (!currentSheetConfig) return;
-      if (
-        pipelineMappings?.fieldMappings &&
-        pipelineMappings.fieldMappings.length > 0
-      ) {
-        saveFieldMappings(
-          config,
-          currentSheet,
-          pipelineMappings.fieldMappings,
-          currentSheetConfig.fields
-        );
-      }
-    }, [pipelineMappings?.fieldMappings, config, currentSheet]);
-
-    // Expose imperative API
     useImperativeHandle(
       ref,
       () => ({
         reset: () => {
-          // Reset global store and local UI state to default import screen
           resetStore();
           setConfig(config);
           setActiveTab("import");
@@ -156,34 +99,27 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           setIsUploading(false);
           setManualEntryData({});
           setManualEntryErrors({});
-          askedToLoadMappingRef.current = false;
           events?.onReset?.();
         },
       }),
       [config, resetStore, setConfig, events]
     );
 
-    // Get current sheet configuration
     const currentSheetConfig = config.sheets?.find(
       (sheet) => sheet.slug === currentSheet
     );
 
-    // Validation function for manual entry
     const validateField = (fieldKey: string, value: any): string | null => {
       const field = currentSheetConfig?.fields.find((f) => f.key === fieldKey);
       if (!field) return null;
 
-      // Required field validation
       if (field.required && (!value || value.toString().trim() === "")) {
         return `${field.label} is required`;
       }
-
-      // Skip validation for empty optional fields
       if (!value || value.toString().trim() === "") {
         return null;
       }
 
-      // Type validation
       switch (field.type) {
         case "number":
           if (isNaN(Number(value))) {
@@ -203,7 +139,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           break;
       }
 
-      // Custom validation rules
       if (field.validations) {
         for (const rule of field.validations) {
           switch (rule.type) {
@@ -244,7 +179,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       return null;
     };
 
-    // Handle manual entry input changes
     const handleManualEntryChange = (
       rowIndex: number,
       fieldKey: string,
@@ -252,7 +186,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
     ) => {
       const rowId = `manual-${rowIndex}`;
 
-      // Update data
       setManualEntryData((prev) => ({
         ...prev,
         [rowId]: {
@@ -261,7 +194,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         },
       }));
 
-      // Validate field
       const error = validateField(fieldKey, value);
       setManualEntryErrors((prev) => ({
         ...prev,
@@ -272,7 +204,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       }));
     };
 
-    // Calculate validation counts for segmented control
     const getValidationCounts = () => {
       let totalRows = 0;
       let validRows = 0;
@@ -282,7 +213,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         const rowData = manualEntryData[rowId];
         const rowErrors = manualEntryErrors[rowId] || {};
 
-        // Check if row has any data
         const hasData = Object.values(rowData).some(
           (value) => value && value.toString().trim() !== ""
         );
@@ -308,7 +238,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       useState(false);
     const { totalRows, validRows, invalidRows } = getValidationCounts();
 
-    // Determine if a row should be visible based on the selected filter
     const isRowVisible = (rowIndex: number): boolean => {
       if (selectedFilter === "all") return true;
 
@@ -316,17 +245,14 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       const rowData = manualEntryData[rowId];
       const rowErrors = manualEntryErrors[rowId] || {};
 
-      // Check if row has any data
       const hasData =
         rowData &&
         Object.values(rowData).some(
           (value) => value && value.toString().trim() !== ""
         );
 
-      // Only show rows with data when filtering
       if (!hasData) return false;
 
-      // Check if row has validation errors
       const hasErrors = Object.values(rowErrors).some(
         (error) => error && error.trim() !== ""
       );
@@ -337,28 +263,24 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       return true;
     };
 
-    // Calculate dynamic row count based on container height
     useEffect(() => {
       if (!tableContainerRef) return;
 
       const calculateMaxRows = () => {
         const containerHeight = tableContainerRef.clientHeight;
-        const headerHeight = 24 + 2; // 24px row height + borders
-        const rowHeight = 24 + 1; // 24px row height + border
-        const padding = 32; // Container padding
+        const headerHeight = 24 + 2;
+        const rowHeight = 24 + 1;
+        const padding = 32;
 
         const availableHeight = containerHeight - headerHeight - padding;
         const calculatedRows = Math.floor(availableHeight / rowHeight);
 
-        // Ensure minimum of 5 rows and maximum of 50 rows
         const newMaxRows = Math.max(5, Math.min(50, calculatedRows));
         setMaxRows(newMaxRows);
       };
 
-      // Initial calculation
       calculateMaxRows();
 
-      // Set up ResizeObserver to recalculate on container size changes
       const resizeObserver = new ResizeObserver(() => {
         calculateMaxRows();
       });
@@ -370,7 +292,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       };
     }, [tableContainerRef]);
 
-    // Add debounced validation calculation to show spinner
     useEffect(() => {
       if (Object.keys(manualEntryData).length > 0) {
         setIsCalculatingValidation(true);
@@ -399,8 +320,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       events?.onActionTriggered?.(action, processedData);
     };
 
-    // Removed unused action icon helper and step/progress configuration
-
     return (
       <Providers>
         <div
@@ -410,7 +329,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           <LoadingOverlay visible={isLoading} />
 
           <Container size="xl" py="xl">
-            {/* Show mapping interface if we're in mapping mode */}
             {activeTab === "mapping" && importedData && currentSheetConfig ? (
               <Card shadow="sm" padding={0} radius="md" withBorder>
                 <MappingInterface
@@ -428,9 +346,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                 />
               </Card>
             ) : activeTab === "review" && importedData && currentSheetConfig ? (
-              /* Review tab - same layout as first screen with mapped data */
               <Card shadow="sm" padding="md" radius="md" withBorder>
-                {/* Top section - title and controls */}
                 <Group justify="space-between" align="center">
                   <Text size="sm" c="gray.8" fw={500}>
                     Review Mapped Data
@@ -457,7 +373,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       size="xs"
                       radius="md"
                       onClick={() => {
-                        // Submit processed data (already includes transforms & validation)
                         events?.onWorkbookComplete?.(processedData);
                       }}
                       styles={{
@@ -542,10 +457,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   </Group>
                 </Group>
 
-                {/* Divider between header and table */}
                 <Divider my="md" />
 
-                {/* Table section with mapped data - scrollable */}
                 <ScrollArea h={600}>
                   <Table
                     striped={false}
@@ -560,7 +473,9 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   >
                     <Table.Thead>
                       <Table.Tr
-                        style={{ backgroundColor: "var(--mantine-color-gray-0)" }}
+                        style={{
+                          backgroundColor: "var(--mantine-color-gray-0)",
+                        }}
                       >
                         {Object.entries(mappingState)
                           .filter(([_, targetField]) => targetField)
@@ -579,7 +494,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                     "1px solid var(--mantine-color-gray-3)",
                                   borderRight:
                                     "1px solid var(--mantine-color-gray-3)",
-                                  backgroundColor: "var(--mantine-color-gray-0)",
+                                  backgroundColor:
+                                    "var(--mantine-color-gray-0)",
                                   padding: "6px 10px",
                                   minWidth: "120px",
                                   position: "sticky",
@@ -622,15 +538,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                 </ScrollArea>
               </Card>
             ) : (
-              /* Original table design - single card with dividers */
               <Card shadow="sm" padding="md" radius="md" withBorder>
-                {/* Top section - title and controls */}
                 <Group justify="space-between" align="center">
                   <Text size="sm" c="gray.8" fw={500}>
                     {currentSheetConfig?.name || "Data Sheet"}
                   </Text>
                   <Group gap="md">
-                    {/* Submit button - only show if there's mapped data */}
                     {Object.keys(mappingState).length > 0 && (
                       <Button
                         size="xs"
@@ -755,10 +668,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   </Group>
                 </Group>
 
-                {/* Divider between header and table */}
                 <Divider my="md" />
 
-                {/* Table section */}
                 <Box
                   style={{
                     position: "relative",
@@ -766,7 +677,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     overflow: "hidden",
                   }}
                 >
-                  {/* Background table grid */}
                   <Box
                     style={{
                       position: "absolute",
@@ -838,7 +748,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             </Table.Tr>
                           </Table.Thead>
                           <Table.Tbody>
-                            {/* Generate editable rows for manual entry - dynamic row count */}
                             {(() => {
                               const visibleDataRows = Array.from(
                                 { length: maxRows },
@@ -846,12 +755,10 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                               ).filter(isRowVisible);
                               const totalRows = [];
 
-                              // Add visible data rows
                               visibleDataRows.forEach((originalIndex) => {
                                 totalRows.push({ type: "data", originalIndex });
                               });
 
-                              // Add blank rows to reach maxRows total
                               const blanksNeeded =
                                 maxRows - visibleDataRows.length;
                               for (let i = 0; i < blanksNeeded; i++) {
@@ -886,17 +793,20 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                           borderRight:
                                             "1px solid var(--mantine-color-gray-3)",
                                           borderBottom:
-                                            displayIndex === totalRows.length - 1
+                                            displayIndex ===
+                                            totalRows.length - 1
                                               ? "2px solid var(--mantine-color-gray-3)"
                                               : "1px solid var(--mantine-color-gray-3)",
                                           backgroundColor: "white",
                                           minHeight: "24px",
                                           width: `${
-                                            100 / currentSheetConfig.fields.length
+                                            100 /
+                                            currentSheetConfig.fields.length
                                           }%`,
                                           minWidth: "120px",
                                           maxWidth: `${
-                                            100 / currentSheetConfig.fields.length
+                                            100 /
+                                            currentSheetConfig.fields.length
                                           }%`,
                                           overflow: "hidden",
                                         }}
@@ -923,7 +833,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                                   e.target.value
                                                 );
                                               } else {
-                                                // For blank rows, start new data entry
                                                 handleManualEntryChange(
                                                   rowIndex,
                                                   field.key,
@@ -1009,9 +918,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                               display: "flex",
                                               alignItems: "center",
                                             }}
-                                          >
-                                            {/* Always blank - no sample text */}
-                                          </div>
+                                          ></div>
                                         )}
                                       </Table.Td>
                                     );
@@ -1025,7 +932,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     </div>
                   </Box>
 
-                  {/* Overlay with centered content - hidden in manual entry mode */}
                   {!isManualEntryMode && (
                     <Flex
                       align="center"
@@ -1035,7 +941,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                         position: "absolute",
                         inset: 0,
                         zIndex: 3,
-                        backgroundColor: "rgba(255, 255, 255, 0.02)", // Only 2% overlay
+                        backgroundColor: "rgba(255, 255, 255, 0.02)",
                         backdropFilter: "none",
                       }}
                     >
@@ -1054,7 +960,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             leftSection={<IconUpload size={15} />}
                             loading={isUploading}
                             onClick={() => {
-                              // Trigger file upload using the existing FileImport component logic
                               const input = document.createElement("input");
                               input.type = "file";
                               input.accept = ".csv,.xlsx,.xls";
@@ -1064,28 +969,24 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                 if (file) {
                                   try {
                                     setIsUploading(true);
-                                    // Automatic offload for large files when backend client is configured
                                     if (
                                       file.size > OFFLOAD_THRESHOLD_BYTES &&
                                       isBackendClientConfigured()
                                     ) {
                                       setLoading(true);
                                       try {
-                                        const rows = await offloadAndProcessFile(
-                                          file,
-                                          {
+                                        const rows =
+                                          await offloadAndProcessFile(file, {
                                             sheetSlug: currentSheet,
                                             pipelineMappings: pipelineMappings,
                                             workbook: config,
-                                          }
-                                        );
+                                          });
                                         setProcessedRows(rows);
                                         setActiveTab("review");
                                       } finally {
                                         setLoading(false);
                                       }
                                     } else {
-                                      // Use the same file processing logic as FileImport
                                       const { parseCSV, parseExcel } =
                                         await import("../utils/dataProcessing");
                                       let data;
@@ -1119,7 +1020,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                 color: "black",
                                 fontSize: "12px",
                                 "&:hover": {
-                                  backgroundColor: "var(--mantine-color-gray-0)",
+                                  backgroundColor:
+                                    "var(--mantine-color-gray-0)",
                                 },
                               },
                             }}
@@ -1133,7 +1035,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             color="dark"
                             leftSection={<IconEdit size={15} />}
                             onClick={() => {
-                              // Switch to manual entry mode
                               setIsManualEntryMode(true);
                             }}
                             styles={{
@@ -1143,7 +1044,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                 color: "black",
                                 fontSize: "12px",
                                 "&:hover": {
-                                  backgroundColor: "var(--mantine-color-gray-0)",
+                                  backgroundColor:
+                                    "var(--mantine-color-gray-0)",
                                 },
                               },
                             }}
@@ -1159,7 +1061,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
             )}
           </Container>
 
-          {/* Action Modal */}
           <Modal
             opened={!!selectedAction}
             onClose={() => setSelectedAction(null)}
@@ -1179,5 +1080,4 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
 );
 
 export default FilefeedWorkbook;
-// Help React DevTools / Dev Overlay identify the component
 FilefeedWorkbook.displayName = "FilefeedWorkbook";

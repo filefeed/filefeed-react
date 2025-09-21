@@ -9,7 +9,7 @@ An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to y
 - Mapping UI with AI-ready structure and safe transform registry
 - Field validations (required/type/regex/min/max) + cross-row uniqueness
 - Automatic small-file client processing; optional paid large-file offload (>10MB) via FileFeed backend (subscription required)
-- Drop-in component with minimal config; also supports headless utilities
+- Drop-in component with minimal config
 - Imperative `reset()` and events for analytics/hooks
 
 ## Installation
@@ -116,35 +116,7 @@ Note: Without a subscription (or without calling `configureBackendClient`), the 
 - `onReset()` – fired when you call `reset()`
 - `ref.reset()` – resets UI and store to the initial import view
 
-## Headless utilities
-
-```ts
-import {
-  parseCSV,
-  parseExcel,
-  processImportedDataWithMappings,
-  defaultTransforms,
-  type PipelineMappings,
-  type FieldConfig,
-} from "filefeed-sdk";
-
-async function process(file: File, fields: FieldConfig[]) {
-  const imported = file.name.endsWith(".csv")
-    ? await parseCSV(file)
-    : await parseExcel(file);
-  const pipeline: PipelineMappings = {
-    fieldMappings: [
-      { source: "Email", target: "email", transform: "formatEmail" },
-    ],
-  };
-  return processImportedDataWithMappings(
-    imported,
-    fields,
-    pipeline,
-    defaultTransforms
-  );
-}
-```
+<!-- Headless utilities are not part of the UI-only package release -->
 
 ## License
 

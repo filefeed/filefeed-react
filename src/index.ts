@@ -1,9 +1,6 @@
 // Main SDK exports
 export { default as FilefeedWorkbook } from "./components/FilefeedWorkbook";
-// Public provider export for consumers who want to wrap components manually
 export { Providers as FilefeedProvider } from "./app/providers";
-
-// (No store exports — internal by default)
 
 // Type exports
 export type {
@@ -25,24 +22,6 @@ export type {
   PipelineMappings,
   TransformRegistry,
 } from "./types";
-
-// Utility exports
-export {
-  parseCSV,
-  parseExcel,
-  validateField,
-  transformValue,
-  generateAutoMapping,
-  processImportedData,
-  // Backend-compatible utilities
-  defaultTransforms,
-  applyNamedTransform,
-  mappingStateToFieldMappings,
-  fieldMappingsToMappingState,
-  validatePipelineConfig,
-  processImportedDataWithMappings,
-} from "./utils/dataProcessing";
-
 // Backend offload client configuration
 export {
   configureBackendClient,

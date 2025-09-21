@@ -25,6 +25,7 @@
       "src/app/page.tsx",
       "src/app/globals.css",
       "src/components/DataTable.tsx",
-      "src/components/FileImport.tsx"
+      "src/components/FileImport.tsx",
+      "src/utils/mappingStorage.ts"
     ]
   }
