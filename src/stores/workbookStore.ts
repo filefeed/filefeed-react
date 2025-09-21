@@ -187,13 +187,22 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
       setFieldMappings: (fieldMappings) => {
         const state = get();
+        // Enforce uniqueness by target: last mapping wins
+        const targetToSource = new Map<string, string>();
+        for (const m of fieldMappings || []) {
+          if (!m.target) continue;
+          targetToSource.set(m.target, m.source);
+        }
+        const compacted: FieldMapping[] = Array.from(targetToSource.entries()).map(
+          ([target, source]) => ({ source, target })
+        );
         set({
           pipelineMappings: {
             ...(state.pipelineMappings || {}),
-            fieldMappings,
+            fieldMappings: compacted,
           },
           // keep legacy mappingState synchronized for components relying on it
-          mappingState: fieldMappingsToMappingState(fieldMappings),
+          mappingState: fieldMappingsToMappingState(compacted),
         });
         get().processData();
       },
@@ -206,10 +215,17 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
       updateMapping: (sourceColumn, targetField) => {
         const state = get();
-        const newMapping = {
-          ...state.mappingState,
-          [sourceColumn]: targetField,
-        };
+        // Start from existing mapping
+        const newMapping: MappingState = { ...state.mappingState };
+        // If assigning to a target, clear it from any other source first to enforce uniqueness
+        if (targetField) {
+          for (const [src, tgt] of Object.entries(newMapping)) {
+            if (src !== sourceColumn && tgt === targetField) {
+              newMapping[src] = null;
+            }
+          }
+        }
+        newMapping[sourceColumn] = targetField;
         set({
           mappingState: newMapping,
           pipelineMappings: {
