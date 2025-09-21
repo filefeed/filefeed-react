@@ -113,6 +113,11 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       onImported: (data) => {
         setImportedData(data);
         setActiveTab("mapping");
+        // Exit manual mode if it was active and clear manual state
+        if (isManualEntryMode) {
+          setIsManualEntryMode(false);
+          resetManual();
+        }
         events?.onDataImported?.(data);
       },
       setProcessedRows,
@@ -125,6 +130,16 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         updateMapping(sourceColumn, targetField as string | null);
       });
       events?.onMappingChanged?.(mapping);
+    };
+
+    // Reset store/UI to the initial import view
+    const hardResetToImport = () => {
+      resetStore();
+      setConfig(config);
+      setActiveTab("import");
+      setIsManualEntryMode(false);
+      resetManual();
+      events?.onReset?.();
     };
 
     // Build processed rows from manual entry state (independent of file upload)
@@ -189,9 +204,9 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   mapping={mappingState}
                   onMappingChange={handleMappingChange}
                   importedData={importedData}
-                  onBack={() => setActiveTab("import")}
+                  onBack={hardResetToImport}
                   onContinue={() => setActiveTab("review")}
-                  onExit={() => setActiveTab("import")}
+                  onExit={hardResetToImport}
                   fieldMappings={pipelineMappings?.fieldMappings}
                   onFieldMappingsChange={setFieldMappings}
                   transformRegistry={transformRegistry}
@@ -396,11 +411,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     {currentSheetConfig?.name || "Data Sheet"}
                   </Text>
                   <Group gap="md">
-                    {(isManualEntryMode ? hasManualRows : Object.keys(mappingState).length > 0) && (
+                    {(isManualEntryMode || Object.keys(mappingState).length > 0) && (
                       <Button
                         size="xs"
                         radius="md"
                         onClick={handleSubmit}
+                        disabled={isManualEntryMode && !hasManualRows}
                         styles={{
                           root: {
                             backgroundColor: "black",
@@ -408,6 +424,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             border: "none",
                             "&:hover": {
                               backgroundColor: "#333",
+                            },
+                            "&:disabled": {
+                              backgroundColor: "var(--mantine-color-gray-4)",
+                              color: "var(--mantine-color-gray-6)",
+                              border: "none",
+                              cursor: "not-allowed",
                             },
                           },
                         }}
