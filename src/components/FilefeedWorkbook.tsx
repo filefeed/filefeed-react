@@ -5,7 +5,6 @@ import React, {
   useState,
   forwardRef,
   useImperativeHandle,
-  useRef,
 } from "react";
 import {
   Container,
@@ -14,7 +13,6 @@ import {
   Group,
   Button,
   Stack,
-  Modal,
   LoadingOverlay,
   Card,
   Divider,
@@ -24,34 +22,18 @@ import {
   ScrollArea,
 } from "@mantine/core";
 import { IconUpload, IconEdit } from "@tabler/icons-react";
-import { FilefeedSDKProps, Action, FilefeedWorkbookRef } from "../types";
+import { FilefeedSDKProps, FilefeedWorkbookRef } from "../types";
 import { useWorkbookStore } from "../stores/workbookStore";
 import MappingInterface from "./MappingInterface";
-import {
-  offloadAndProcessFile,
-  OFFLOAD_THRESHOLD_BYTES,
-  isBackendClientConfigured,
-} from "../utils/backendClient";
 import { Providers } from "../app/providers";
+import { useManualEntry } from "../hooks/useManualEntry";
+import { useDynamicRowCount } from "../hooks/useDynamicRowCount";
+import { useFileImport } from "../hooks/useFileImport";
 
 const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
   ({ config, events, theme = "light", className }, ref) => {
     const [activeTab, setActiveTab] = useState<string>("import");
-    const [selectedAction, setSelectedAction] = useState<Action | null>(null);
     const [isManualEntryMode, setIsManualEntryMode] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [manualEntryData, setManualEntryData] = useState<
-      Record<string, Record<string, any>>
-    >({});
-    const [manualEntryErrors, setManualEntryErrors] = useState<
-      Record<string, Record<string, string>>
-    >({});
-    const [selectedFilter, setSelectedFilter] = useState<
-      "all" | "valid" | "invalid"
-    >("all");
-    const [tableContainerRef, setTableContainerRef] =
-      useState<HTMLDivElement | null>(null);
-    const [maxRows, setMaxRows] = useState(18);
 
     const {
       setConfig,
@@ -61,8 +43,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       mappingState,
       updateMapping,
       processedData,
-      updateRowData,
-      validationErrors,
       isLoading,
       setLoading,
       pipelineMappings,
@@ -71,6 +51,27 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setProcessedRows,
       reset: resetStore,
     } = useWorkbookStore();
+
+    const currentSheetConfig = config.sheets?.find(
+      (sheet) => sheet.slug === currentSheet
+    );
+
+    const {
+      manualEntryData,
+      manualEntryErrors,
+      selectedFilter,
+      setSelectedFilter,
+      isCalculatingValidation,
+      totalRows,
+      validRows,
+      invalidRows,
+      isRowVisible,
+      handleManualEntryChange,
+      reset: resetManual,
+    } = useManualEntry(currentSheetConfig?.fields);
+
+    const { setContainerRef: setTableContainerRef, maxRows } =
+      useDynamicRowCount();
 
     useEffect(() => {
       setConfig(config);
@@ -94,230 +95,33 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           resetStore();
           setConfig(config);
           setActiveTab("import");
-          setSelectedAction(null);
           setIsManualEntryMode(false);
-          setIsUploading(false);
-          setManualEntryData({});
-          setManualEntryErrors({});
+          resetManual();
           events?.onReset?.();
         },
       }),
       [config, resetStore, setConfig, events]
     );
 
-    const currentSheetConfig = config.sheets?.find(
-      (sheet) => sheet.slug === currentSheet
-    );
-
-    const validateField = (fieldKey: string, value: any): string | null => {
-      const field = currentSheetConfig?.fields.find((f) => f.key === fieldKey);
-      if (!field) return null;
-
-      if (field.required && (!value || value.toString().trim() === "")) {
-        return `${field.label} is required`;
-      }
-      if (!value || value.toString().trim() === "") {
-        return null;
-      }
-
-      switch (field.type) {
-        case "number":
-          if (isNaN(Number(value))) {
-            return `${field.label} must be a valid number`;
-          }
-          break;
-        case "email":
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(value.toString())) {
-            return `${field.label} must be a valid email address`;
-          }
-          break;
-        case "date":
-          if (isNaN(Date.parse(value.toString()))) {
-            return `${field.label} must be a valid date`;
-          }
-          break;
-      }
-
-      if (field.validations) {
-        for (const rule of field.validations) {
-          switch (rule.type) {
-            case "regex":
-              if (
-                rule.value &&
-                !new RegExp(rule.value).test(value.toString())
-              ) {
-                return rule.message;
-              }
-              break;
-            case "min":
-              if (field.type === "number" && Number(value) < rule.value) {
-                return rule.message;
-              }
-              if (
-                field.type === "string" &&
-                value.toString().length < rule.value
-              ) {
-                return rule.message;
-              }
-              break;
-            case "max":
-              if (field.type === "number" && Number(value) > rule.value) {
-                return rule.message;
-              }
-              if (
-                field.type === "string" &&
-                value.toString().length > rule.value
-              ) {
-                return rule.message;
-              }
-              break;
-          }
-        }
-      }
-
-      return null;
-    };
-
-    const handleManualEntryChange = (
-      rowIndex: number,
-      fieldKey: string,
-      value: string
-    ) => {
-      const rowId = `manual-${rowIndex}`;
-
-      setManualEntryData((prev) => ({
-        ...prev,
-        [rowId]: {
-          ...prev[rowId],
-          [fieldKey]: value,
-        },
-      }));
-
-      const error = validateField(fieldKey, value);
-      setManualEntryErrors((prev) => ({
-        ...prev,
-        [rowId]: {
-          ...prev[rowId],
-          [fieldKey]: error || "",
-        },
-      }));
-    };
-
-    const getValidationCounts = () => {
-      let totalRows = 0;
-      let validRows = 0;
-      let invalidRows = 0;
-
-      Object.keys(manualEntryData).forEach((rowId) => {
-        const rowData = manualEntryData[rowId];
-        const rowErrors = manualEntryErrors[rowId] || {};
-
-        const hasData = Object.values(rowData).some(
-          (value) => value && value.toString().trim() !== ""
-        );
-
-        if (hasData) {
-          totalRows++;
-          const hasErrors = Object.values(rowErrors).some(
-            (error) => error && error.trim() !== ""
-          );
-
-          if (hasErrors) {
-            invalidRows++;
-          } else {
-            validRows++;
-          }
-        }
-      });
-
-      return { totalRows, validRows, invalidRows };
-    };
-
-    const [isCalculatingValidation, setIsCalculatingValidation] =
-      useState(false);
-    const { totalRows, validRows, invalidRows } = getValidationCounts();
-
-    const isRowVisible = (rowIndex: number): boolean => {
-      if (selectedFilter === "all") return true;
-
-      const rowId = `manual-${rowIndex}`;
-      const rowData = manualEntryData[rowId];
-      const rowErrors = manualEntryErrors[rowId] || {};
-
-      const hasData =
-        rowData &&
-        Object.values(rowData).some(
-          (value) => value && value.toString().trim() !== ""
-        );
-
-      if (!hasData) return false;
-
-      const hasErrors = Object.values(rowErrors).some(
-        (error) => error && error.trim() !== ""
-      );
-
-      if (selectedFilter === "valid") return !hasErrors;
-      if (selectedFilter === "invalid") return hasErrors;
-
-      return true;
-    };
-
-    useEffect(() => {
-      if (!tableContainerRef) return;
-
-      const calculateMaxRows = () => {
-        const containerHeight = tableContainerRef.clientHeight;
-        const headerHeight = 24 + 2;
-        const rowHeight = 24 + 1;
-        const padding = 32;
-
-        const availableHeight = containerHeight - headerHeight - padding;
-        const calculatedRows = Math.floor(availableHeight / rowHeight);
-
-        const newMaxRows = Math.max(5, Math.min(50, calculatedRows));
-        setMaxRows(newMaxRows);
-      };
-
-      calculateMaxRows();
-
-      const resizeObserver = new ResizeObserver(() => {
-        calculateMaxRows();
-      });
-
-      resizeObserver.observe(tableContainerRef);
-
-      return () => {
-        resizeObserver.disconnect();
-      };
-    }, [tableContainerRef]);
-
-    useEffect(() => {
-      if (Object.keys(manualEntryData).length > 0) {
-        setIsCalculatingValidation(true);
-        const timer = setTimeout(() => {
-          setIsCalculatingValidation(false);
-        }, 300);
-        return () => clearTimeout(timer);
-      }
-    }, [manualEntryData, manualEntryErrors]);
-
-    const handleDataImported = (data: any) => {
-      setImportedData(data);
-      setActiveTab("mapping");
-      events?.onDataImported?.(data);
-    };
+    const { isUploading, triggerFilePicker } = useFileImport({
+      currentSheet: currentSheet || "",
+      pipelineMappings,
+      config,
+      onImported: (data) => {
+        setImportedData(data);
+        setActiveTab("mapping");
+        events?.onDataImported?.(data);
+      },
+      setProcessedRows,
+      setLoading,
+      setActiveTab,
+    });
 
     const handleMappingChange = (mapping: any) => {
       Object.entries(mapping).forEach(([sourceColumn, targetField]) => {
         updateMapping(sourceColumn, targetField as string | null);
       });
       events?.onMappingChanged?.(mapping);
-    };
-
-    const handleActionClick = (action: Action) => {
-      setSelectedAction(action);
-      events?.onActionTriggered?.(action, processedData);
     };
 
     return (
@@ -959,60 +763,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             color="dark"
                             leftSection={<IconUpload size={15} />}
                             loading={isUploading}
-                            onClick={() => {
-                              const input = document.createElement("input");
-                              input.type = "file";
-                              input.accept = ".csv,.xlsx,.xls";
-                              input.onchange = async (e) => {
-                                const file = (e.target as HTMLInputElement)
-                                  .files?.[0];
-                                if (file) {
-                                  try {
-                                    setIsUploading(true);
-                                    if (
-                                      file.size > OFFLOAD_THRESHOLD_BYTES &&
-                                      isBackendClientConfigured()
-                                    ) {
-                                      setLoading(true);
-                                      try {
-                                        const rows =
-                                          await offloadAndProcessFile(file, {
-                                            sheetSlug: currentSheet,
-                                            pipelineMappings: pipelineMappings,
-                                            workbook: config,
-                                          });
-                                        setProcessedRows(rows);
-                                        setActiveTab("review");
-                                      } finally {
-                                        setLoading(false);
-                                      }
-                                    } else {
-                                      const { parseCSV, parseExcel } =
-                                        await import("../utils/dataProcessing");
-                                      let data;
-
-                                      if (
-                                        file.name.toLowerCase().endsWith(".csv")
-                                      ) {
-                                        data = await parseCSV(file);
-                                      } else {
-                                        data = await parseExcel(file);
-                                      }
-
-                                      handleDataImported(data);
-                                    }
-                                  } catch (error) {
-                                    console.error(
-                                      "Error processing file:",
-                                      error
-                                    );
-                                  } finally {
-                                    setIsUploading(false);
-                                  }
-                                }
-                              };
-                              input.click();
-                            }}
+                            onClick={triggerFilePicker}
                             styles={{
                               root: {
                                 backgroundColor: "white",
@@ -1060,19 +811,6 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
               </Card>
             )}
           </Container>
-
-          <Modal
-            opened={!!selectedAction}
-            onClose={() => setSelectedAction(null)}
-            title={selectedAction?.label}
-            size="md"
-          >
-            {selectedAction && (
-              <Stack gap="md">
-                <Text size="sm">{selectedAction.description}</Text>
-              </Stack>
-            )}
-          </Modal>
         </div>
       </Providers>
     );
