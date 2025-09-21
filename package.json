@@ -1,6 +1,6 @@
 {
   "name": "filefeed-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A powerful data onboarding SDK for importing, mapping, validating, and transforming structured data",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -81,8 +81,8 @@
     "typescript": "^5.2.0"
   },
   "peerDependencies": {
-    "react": ">=16.8.0",
-    "react-dom": ">=16.8.0",
+    "react": ">=17.0.0",
+    "react-dom": ">=17.0.0",
     "@mantine/core": ">=7.0.0",
     "@mantine/hooks": ">=7.0.0",
     "@mantine/dropzone": ">=7.0.0",

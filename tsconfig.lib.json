@@ -1,0 +1,23 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "noEmit": false,
+      "declaration": true,
+      "emitDeclarationOnly": true,
+      "outDir": "dist",
+      "rootDir": "src",
+      "jsx": "react-jsx",
+      "module": "ESNext",
+      "moduleResolution": "Bundler",
+      "baseUrl": ".",
+      "paths": {
+        "@/*": ["src/*"],
+        "@/components/*": ["src/components/*"],
+        "@/types/*": ["src/types/*"],
+        "@/utils/*": ["src/utils/*"],
+        "@/hooks/*": ["src/hooks/*"],
+        "@/stores/*": ["src/stores/*"]
+      }
+    },
+    "include": ["src/**/*"]
+  }
