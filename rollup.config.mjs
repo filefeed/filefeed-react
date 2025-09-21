@@ -30,6 +30,17 @@ export default {
     'react/jsx-runtime',
     'react/jsx-dev-runtime',
   ],
+  onwarn(warning, warn) {
+    // Silence Mantine ESM files that include 'use client' directives.
+    if (
+      warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
+      typeof warning.message === 'string' &&
+      warning.message.includes('use client')
+    ) {
+      return;
+    }
+    warn(warning);
+  },
   plugins: [
     alias({
       entries: [{ find: '@/', replacement: 'src/' }],
