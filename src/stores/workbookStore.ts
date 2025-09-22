@@ -47,6 +47,8 @@ interface WorkbookActions {
   processData: () => void;
   processDataChunked: () => Promise<void>;
   scheduleChunkedProcessing: () => void;
+  processOnContinue: () => Promise<void>;
+  cancelProcessing: () => void;
   setProcessedRows: (rows: DataRow[]) => void;
   updateRowData: (rowId: string, fieldKey: string, value: any) => void;
   deleteRow: (rowId: string) => void;
@@ -159,25 +161,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
             pipelineMappings = effective;
           }
 
-          set({ pipelineMappings });
-
-          // If dataset is small, process immediately; otherwise, start background processing
-          const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-          if ((data.rows?.length || 0) <= threshold) {
-            const processedData = processImportedDataWithMappings(
-              data,
-              currentSheetConfig.fields,
-              pipelineMappings,
-              state.transformRegistry || defaultTransforms
-            );
-            set({ processedData });
-            const validationErrors = processedData.flatMap((row) => row.errors);
-            set({ validationErrors });
-          } else {
-            set({ processedData: [], validationErrors: [] });
-            // Kick off background chunked processing automatically
-            get().processDataChunked();
-          }
+          set({
+            pipelineMappings,
+            processedData: [],
+            validationErrors: [],
+            isLoading: false,
+          });
         }
       },
 
@@ -309,6 +298,33 @@ export const useWorkbookStore = create<WorkbookStore>()(
         }, PROCESS_DEBOUNCE_MS) as any;
       },
 
+      // Process when user clicks Continue: choose strategy by dataset size
+      processOnContinue: async () => {
+        const state = get();
+        if (!state.importedData) return;
+        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+        const count = state.importedData.rows?.length || 0;
+        if (count <= threshold) {
+          // Small dataset: run sync processing but still show loader for UX consistency
+          set({ isLoading: true });
+          await Promise.resolve().then(() => get().processData());
+          set({ isLoading: false });
+        } else {
+          await get().processDataChunked();
+        }
+      },
+
+      // Cancel any in-flight or scheduled processing
+      cancelProcessing: () => {
+        if (reprocessTimer) {
+          clearTimeout(reprocessTimer);
+          reprocessTimer = null;
+        }
+        // Bump run id so any loop exits
+        processingRunId++;
+        set({ isLoading: false });
+      },
+
       clearImportedData: () => {
         set({
           importedData: null,
@@ -325,53 +341,16 @@ export const useWorkbookStore = create<WorkbookStore>()(
             fieldMappings: mappingStateToFieldMappings(mapping),
           },
         });
-        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-        if ((get().importedData?.rows.length || 0) <= threshold) {
-          get().processData();
-        } else {
-          get().scheduleChunkedProcessing();
-        }
+        // Never auto-process on mapping change; user will click Continue
+        get().cancelProcessing();
+        set({ processedData: [], validationErrors: [] });
       },
 
-      setFieldMappings: (fieldMappings) => {
-        const state = get();
-        // Enforce uniqueness by target: last mapping wins
-        const targetToSource = new Map<string, string>();
-        for (const m of fieldMappings || []) {
-          if (!m.target) continue;
-          targetToSource.set(m.target, m.source);
-        }
-        const compacted: FieldMapping[] = Array.from(
-          targetToSource.entries()
-        ).map(([target, source]) => ({ source, target }));
-        set({
-          pipelineMappings: {
-            ...(state.pipelineMappings || {}),
-            fieldMappings: compacted,
-          },
-          mappingState: fieldMappingsToMappingState(compacted),
-        });
-        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-        if ((get().importedData?.rows.length || 0) <= threshold) {
-          get().processData();
-        } else {
-          get().scheduleChunkedProcessing();
-        }
-      },
-
-      setTransformRegistry: (registry) => {
-        set({ transformRegistry: registry });
-        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-        if ((get().importedData?.rows.length || 0) <= threshold) {
-          get().processData();
-        } else {
-          get().scheduleChunkedProcessing();
-        }
-      },
-
+      // Update a single mapping entry and enforce unique targets (last win)
       updateMapping: (sourceColumn, targetField) => {
         const state = get();
         const newMapping: MappingState = { ...state.mappingState };
+        // If assigning a target, clear that target from other sources to keep uniqueness
         if (targetField) {
           for (const [src, tgt] of Object.entries(newMapping)) {
             if (src !== sourceColumn && tgt === targetField) {
@@ -386,12 +365,41 @@ export const useWorkbookStore = create<WorkbookStore>()(
             fieldMappings: mappingStateToFieldMappings(newMapping),
           },
         });
-        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-        if ((get().importedData?.rows.length || 0) <= threshold) {
-          get().processData();
-        } else {
-          get().scheduleChunkedProcessing();
+        // Do not auto-process; wait for Continue
+        get().cancelProcessing();
+        set({ processedData: [], validationErrors: [] });
+      },
+
+      // Set full FieldMapping[] (advanced mapping UI)
+      setFieldMappings: (fieldMappings) => {
+        const state = get();
+        // Enforce uniqueness by target: last mapping wins
+        const targetToSource = new Map<string, string>();
+        for (const m of fieldMappings || []) {
+          if (!m.target) continue;
+          targetToSource.set(m.target, m.source);
         }
+        const compacted: FieldMapping[] = Array.from(targetToSource.entries()).map(
+          ([target, source]) => ({ source, target })
+        );
+        set({
+          pipelineMappings: {
+            ...(state.pipelineMappings || {}),
+            fieldMappings: compacted,
+          },
+          // keep legacy mappingState synchronized for components relying on it
+          mappingState: fieldMappingsToMappingState(compacted),
+        });
+        // Do not auto-process; wait for Continue
+        get().cancelProcessing();
+        set({ processedData: [], validationErrors: [] });
+      },
+
+      setTransformRegistry: (registry) => {
+        set({ transformRegistry: registry });
+        // Do not auto-process; wait for Continue
+        get().cancelProcessing();
+        set({ processedData: [], validationErrors: [] });
       },
 
       generateAutoMapping: () => {
@@ -414,12 +422,8 @@ export const useWorkbookStore = create<WorkbookStore>()(
               fieldMappings: mappingStateToFieldMappings(autoMapping),
             },
           });
-          const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-          if ((get().importedData?.rows.length || 0) <= threshold) {
-            get().processData();
-          } else {
-            set({ processedData: [], validationErrors: [] });
-          }
+          get().cancelProcessing();
+          set({ processedData: [], validationErrors: [] });
         }
       },
 

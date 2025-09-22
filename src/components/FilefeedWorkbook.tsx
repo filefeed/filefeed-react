@@ -59,7 +59,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setMapping,
       clearImportedData,
       updateRowData,
-      processDataChunked,
+      processOnContinue,
       reset: resetStore,
     } = useWorkbookStore();
 
@@ -157,27 +157,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       const missingRequired = cfgErrors.some((e) =>
         e.toLowerCase().includes("missing mapping for required field")
       );
-      return !missingRequired && !isLoading && (processedData?.length || 0) > 0;
-    }, [currentSheetConfig, pipelineMappings, mappingState, processedData, transformRegistry, isLoading]);
-
-    // Auto-advance to Review when processing completes and required mappings are satisfied
-    useEffect(() => {
-      if (activeTab !== "mapping") return;
-      if (!importedData || !currentSheetConfig) return;
-      const pipeline = pipelineMappings || {
-        fieldMappings: mappingStateToFieldMappings(mappingState),
-      };
-      const availableTransforms = transformRegistry ? Object.keys(transformRegistry) : undefined;
-      const cfgErrors = validatePipelineConfig(
-        currentSheetConfig.fields,
-        pipeline,
-        availableTransforms
-      );
-      const missingRequired = cfgErrors.some((e) => e.toLowerCase().includes("missing mapping for required field"));
-      if (!missingRequired && !isLoading && (processedData?.length || 0) > 0) {
-        setActiveTab("review");
-      }
-    }, [activeTab, importedData, currentSheetConfig, pipelineMappings, mappingState, processedData, transformRegistry, isLoading]);
+      return !missingRequired;
+    }, [currentSheetConfig, pipelineMappings, mappingState, transformRegistry]);
 
     // Reset store/UI to the initial import view
     const hardResetToImport = () => {
@@ -277,7 +258,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           className={`filefeed-workbook ${className || ""}`}
           data-theme={theme}
         >
-          <LoadingOverlay visible={isLoading && activeTab !== "mapping"} />
+          <LoadingOverlay visible={isLoading} />
 
           <Container size="xl" py="xl">
             {activeTab === "mapping" && importedData && currentSheetConfig ? (
@@ -289,7 +270,10 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   onMappingChange={handleMappingChange}
                   importedData={importedData}
                   onBack={hardResetToImport}
-                  onContinue={() => setActiveTab("review")}
+                  onContinue={async () => {
+                    await processOnContinue();
+                    setActiveTab("review");
+                  }}
                   onExit={hardResetToImport}
                   fieldMappings={pipelineMappings?.fieldMappings}
                   onFieldMappingsChange={setFieldMappings}
