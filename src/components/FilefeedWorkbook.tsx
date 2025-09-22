@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useState,
   useMemo,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -30,13 +31,16 @@ import { Providers } from "../app/providers";
 import { useManualEntry } from "../hooks/useManualEntry";
 import { useDynamicRowCount } from "../hooks/useDynamicRowCount";
 import { useFileImport } from "../hooks/useFileImport";
-import { transformValue, validateField } from "../utils/dataProcessing";
+import { transformValue, validateField, validatePipelineConfig, mappingStateToFieldMappings } from "../utils/dataProcessing";
 
 const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
   ({ config, events, theme = "light", className }, ref) => {
     const [activeTab, setActiveTab] = useState<string>("import");
     const [isManualEntryMode, setIsManualEntryMode] = useState(false);
     const [reviewFilter, setReviewFilter] = useState<"all" | "valid" | "invalid">("all");
+    const reviewViewportRef = useRef<HTMLDivElement | null>(null);
+    const [reviewViewportHeight, setReviewViewportHeight] = useState<number>(600);
+    const [reviewScrollTop, setReviewScrollTop] = useState<number>(0);
 
     const {
       setConfig,
@@ -55,6 +59,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setMapping,
       clearImportedData,
       updateRowData,
+      processDataChunked,
       reset: resetStore,
     } = useWorkbookStore();
 
@@ -135,6 +140,45 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       events?.onMappingChanged?.(mapping);
     };
 
+    // Compute whether required mappings are satisfied and we can proceed
+    const canProceedToReview = useMemo(() => {
+      if (!currentSheetConfig) return false;
+      const pipeline = pipelineMappings || {
+        fieldMappings: mappingStateToFieldMappings(mappingState),
+      };
+      const availableTransforms = transformRegistry
+        ? Object.keys(transformRegistry)
+        : undefined;
+      const cfgErrors = validatePipelineConfig(
+        currentSheetConfig.fields,
+        pipeline,
+        availableTransforms
+      );
+      const missingRequired = cfgErrors.some((e) =>
+        e.toLowerCase().includes("missing mapping for required field")
+      );
+      return !missingRequired && !isLoading && (processedData?.length || 0) > 0;
+    }, [currentSheetConfig, pipelineMappings, mappingState, processedData, transformRegistry, isLoading]);
+
+    // Auto-advance to Review when processing completes and required mappings are satisfied
+    useEffect(() => {
+      if (activeTab !== "mapping") return;
+      if (!importedData || !currentSheetConfig) return;
+      const pipeline = pipelineMappings || {
+        fieldMappings: mappingStateToFieldMappings(mappingState),
+      };
+      const availableTransforms = transformRegistry ? Object.keys(transformRegistry) : undefined;
+      const cfgErrors = validatePipelineConfig(
+        currentSheetConfig.fields,
+        pipeline,
+        availableTransforms
+      );
+      const missingRequired = cfgErrors.some((e) => e.toLowerCase().includes("missing mapping for required field"));
+      if (!missingRequired && !isLoading && (processedData?.length || 0) > 0) {
+        setActiveTab("review");
+      }
+    }, [activeTab, importedData, currentSheetConfig, pipelineMappings, mappingState, processedData, transformRegistry, isLoading]);
+
     // Reset store/UI to the initial import view
     const hardResetToImport = () => {
       resetStore();
@@ -203,13 +247,37 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       return processedData;
     }, [processedData, reviewFilter]);
 
+    // Virtualization for Review table
+    const REVIEW_ROW_HEIGHT = 32; // px, includes borders
+    useEffect(() => {
+      const el = reviewViewportRef.current;
+      if (!el) return;
+      const measure = () => {
+        setReviewViewportHeight(el.clientHeight || 600);
+      };
+      measure();
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [reviewViewportRef]);
+
+    const reviewVisibleCount = Math.ceil(reviewViewportHeight / REVIEW_ROW_HEIGHT) + 8; // overscan
+    const reviewStartIndex = Math.max(0, Math.floor(reviewScrollTop / REVIEW_ROW_HEIGHT) - 4);
+    const reviewEndIndex = Math.min(visibleProcessedRows.length, reviewStartIndex + reviewVisibleCount);
+    const reviewPaddingTop = reviewStartIndex * REVIEW_ROW_HEIGHT;
+    const reviewPaddingBottom = Math.max(0, (visibleProcessedRows.length - reviewEndIndex) * REVIEW_ROW_HEIGHT);
+    const mappedFields = useMemo(
+      () => Object.entries(mappingState).filter(([_, tgt]) => tgt).map(([_, tgt]) => String(tgt)),
+      [mappingState]
+    );
+
     return (
       <Providers>
         <div
           className={`filefeed-workbook ${className || ""}`}
           data-theme={theme}
         >
-          <LoadingOverlay visible={isLoading} />
+          <LoadingOverlay visible={isLoading && activeTab !== "mapping"} />
 
           <Container size="xl" py="xl">
             {activeTab === "mapping" && importedData && currentSheetConfig ? (
@@ -226,6 +294,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   fieldMappings={pipelineMappings?.fieldMappings}
                   onFieldMappingsChange={setFieldMappings}
                   transformRegistry={transformRegistry}
+                  isProcessing={isLoading}
+                  canContinue={canProceedToReview}
                 />
               </Card>
             ) : activeTab === "review" && importedData && currentSheetConfig ? (
@@ -335,7 +405,11 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
 
                 <Divider my="md" />
 
-                <ScrollArea h={600}>
+                <div
+                  ref={reviewViewportRef}
+                  onScroll={(e) => setReviewScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}
+                  style={{ height: 600, overflowY: "auto" }}
+                >
                   <Table
                     striped={false}
                     highlightOnHover={true}
@@ -386,15 +460,22 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {visibleProcessedRows.map((pRow, index) => (
+                      {/* Top spacer row */}
+                      {reviewPaddingTop > 0 && (
+                        <Table.Tr>
+                          <Table.Td
+                            colSpan={Math.max(1, mappedFields.length)}
+                            style={{ height: reviewPaddingTop, padding: 0, border: "none", background: "transparent" }}
+                          />
+                        </Table.Tr>
+                      )}
+                      {visibleProcessedRows.slice(reviewStartIndex, reviewEndIndex).map((pRow, index) => (
                         <Table.Tr key={pRow.id || index}>
-                          {Object.entries(mappingState)
-                            .filter(([_, targetField]) => targetField)
-                            .map(([_, targetField]) => {
+                          {mappedFields.map((targetField) => {
                               const field = currentSheetConfig.fields.find(
                                 (f) => f.key === targetField
                               );
-                              const value = (pRow.data || {})[targetField as string] ?? "";
+                              const value = (pRow.data || {})[targetField] ?? "";
                               const fieldHasError = (pRow.errors || []).some(
                                 (e) => e.field === targetField
                               );
@@ -403,7 +484,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                               );
                               return (
                                 <Table.Td
-                                  key={`${pRow.id}-${String(targetField)}`}
+                                  key={`${pRow.id}-${targetField}`}
                                   style={{
                                     borderBottom:
                                       "1px solid var(--mantine-color-gray-3)",
@@ -419,12 +500,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                     type={field?.type === "number" ? "number" : "text"}
                                     value={String(value)}
                                     onChange={(e) =>
-                                      updateRowData(pRow.id, String(targetField), e.target.value)
+                                      updateRowData(pRow.id, targetField, e.target.value)
                                     }
                                     title={firstError?.message}
                                     style={{
                                       width: "100%",
-                                      height: "30px",
+                                      height: `${REVIEW_ROW_HEIGHT - 2}px`,
                                       border: fieldHasError
                                         ? "1px solid var(--mantine-color-red-5)"
                                         : "1px solid transparent",
@@ -441,9 +522,18 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             })}
                         </Table.Tr>
                       ))}
+                      {/* Bottom spacer row */}
+                      {reviewPaddingBottom > 0 && (
+                        <Table.Tr>
+                          <Table.Td
+                            colSpan={Math.max(1, mappedFields.length)}
+                            style={{ height: reviewPaddingBottom, padding: 0, border: "none", background: "transparent" }}
+                          />
+                        </Table.Tr>
+                      )}
                     </Table.Tbody>
                   </Table>
-                </ScrollArea>
+                </div>
               </Card>
             ) : (
               <Card shadow="sm" padding="md" radius="md" withBorder>

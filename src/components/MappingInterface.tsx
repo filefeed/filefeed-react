@@ -35,6 +35,8 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   fieldMappings,
   onFieldMappingsChange,
   transformRegistry,
+  isProcessing,
+  canContinue,
 }) => {
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
@@ -170,10 +172,14 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
           >
             Back
           </Button>
-
+          {isProcessing && (
+            <Badge variant="light" color="gray" size="sm">
+              Processing...
+            </Badge>
+          )}
           <Button
             size="xs"
-            disabled={Object.keys(mapping).length === 0}
+            disabled={!canContinue}
             onClick={onContinue}
             styles={{
               root: {

@@ -166,6 +166,10 @@ export interface MappingInterfaceProps {
   fieldMappings?: FieldMapping[];
   onFieldMappingsChange?: (mappings: FieldMapping[]) => void;
   transformRegistry?: TransformRegistry;
+  // Background processing state and readiness
+  isProcessing?: boolean;
+  canContinue?: boolean;
+  processingProgress?: number;
 }
 
 // Imperative ref interface for FilefeedWorkbook component

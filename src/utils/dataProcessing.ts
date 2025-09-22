@@ -15,95 +15,85 @@ import {
 // File parsing utilities
 export const parseCSV = (file: File): Promise<ImportedData> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
+    // 1) Detect encoding from a small sample
+    const sampler = new FileReader();
+    sampler.onerror = () => reject(new Error("Failed to read file"));
+    sampler.onload = () => {
       try {
-        const buffer = reader.result as ArrayBuffer;
+        const buffer = sampler.result as ArrayBuffer;
         const sampleBytes = new Uint8Array(
           buffer.slice(0, Math.min(buffer.byteLength, 512 * 1024))
         );
-        // jschardet expects a string; provide a best-effort 1:1 byte mapping via windows-1252
-        // for detection purposes only
         let sampleString = "";
         try {
           sampleString = new TextDecoder("windows-1252").decode(sampleBytes);
         } catch {
-          // Fallback to latin-1 style mapping using code points
           sampleString = Array.from(sampleBytes)
             .map((c) => String.fromCharCode(c))
             .join("");
         }
         const detection = detectEncoding(sampleString);
         let encoding = (detection.encoding || "utf-8").toLowerCase();
-        // If detection confidence is low, default to utf-8
         if (!detection.encoding || (detection.confidence || 0) < 0.2) {
           encoding = "utf-8";
         }
 
-        let text: string;
-        try {
-          text = new TextDecoder(encoding as string).decode(new Uint8Array(buffer));
-        } catch (_err) {
-          // Fallback to utf-8 if the encoding label isn't supported in this browser
-          text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
-        }
+        // 2) Stream-parse the File with Papa on a Web Worker
+        const rows: Record<string, any>[] = [];
+        let headers: string[] = [];
+        let parseErrors: any[] = [];
 
-        const baseOptions = {
+        const config: any = {
           header: true,
           skipEmptyLines: true,
-          transform: (value: string) => (typeof value === "string" ? value.trim() : value),
-          transformHeader: (header: string) => (typeof header === "string" ? header.trim() : header),
-        } as const;
-
-        const tryParse = (delimiter?: string) =>
-          Papa.parse(text, delimiter ? { ...baseOptions, delimiter } : baseOptions);
-
-        const hasSeriousErrors = (res: Papa.ParseResult<any>) =>
-          Array.isArray(res.errors) && res.errors.some((e) => e.type !== "FieldMismatch" && e.type !== "Delimiter");
-
-        const onlyDelimiterIssue = (res: Papa.ParseResult<any>) =>
-          Array.isArray(res.errors) && res.errors.length > 0 && res.errors.every((e) => e.type === "Delimiter");
-
-        let results = tryParse();
-
-        // If auto-detection failed or we got suspiciously few fields, try common delimiters
-        if (onlyDelimiterIssue(results) || ((results.meta.fields || []).length <= 1)) {
-          const candidates = [";", "\t", "|", ","];
-          let best = results;
-          let bestFields = (best.meta.fields || []).length;
-          for (const d of candidates) {
-            const r = tryParse(d);
-            const fieldsCount = (r.meta.fields || []).length;
-            if (!hasSeriousErrors(r) && fieldsCount > bestFields) {
-              best = r;
-              bestFields = fieldsCount;
+          worker: true,
+          encoding,
+          transform: (value: string) =>
+            typeof value === "string" ? value.trim() : value,
+          transformHeader: (header: string) =>
+            typeof header === "string" ? header.trim() : header,
+          step: (result: any) => {
+            // capture headers from meta
+            if (!headers.length && Array.isArray(result.meta?.fields)) {
+              headers = (result.meta.fields as string[]) || headers;
             }
-            if (!hasSeriousErrors(r) && fieldsCount >= 2) {
-              // Early accept once we find a reasonable delimiter
-              best = r;
-              break;
+            // accumulate row
+            if (result?.data && typeof result.data === "object") {
+              rows.push(result.data as Record<string, any>);
             }
-          }
-          results = best;
-        }
-
-        if (hasSeriousErrors(results)) {
-          reject(new Error(`CSV parsing error: ${results.errors[0].message}`));
-          return;
-        }
-
-        resolve({
-          headers: results.meta.fields || [],
-          rows: results.data as Record<string, any>[],
-          fileName: file.name,
-          fileType: "csv",
-        });
-      } catch (error: any) {
-        reject(error);
+            if (Array.isArray(result.errors) && result.errors.length) {
+              parseErrors = parseErrors.concat(result.errors);
+            }
+          },
+          complete: (_final) => {
+            // If headers are still not known, infer from first row keys
+            if (!headers.length && rows.length) {
+              headers = Object.keys(rows[0]);
+            }
+            // If serious errors, reject
+            const serious = parseErrors.find(
+              (e) => e.type !== "FieldMismatch" && e.type !== "Delimiter"
+            );
+            if (serious) {
+              reject(new Error(`CSV parsing error: ${serious.message}`));
+              return;
+            }
+            resolve({
+              headers,
+              rows,
+              fileName: file.name,
+              fileType: "csv",
+            });
+          },
+        };
+        Papa.parse(file as any, config);
+      } catch (err) {
+        reject(err);
       }
     };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsArrayBuffer(file);
+    // Read a small sample to determine encoding, then run full streaming parse
+    const sampleBlob = file.slice(0, Math.min(file.size, 512 * 1024));
+    sampler.readAsArrayBuffer(sampleBlob);
   });
 };
 

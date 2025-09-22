@@ -18,7 +18,14 @@ import {
   fieldMappingsToMappingState,
   defaultTransforms,
   validateField,
+  transformValue,
+  applyNamedTransform,
 } from "../utils/dataProcessing";
+
+// Module-level helpers for background processing
+let reprocessTimer: any = null;
+const PROCESS_DEBOUNCE_MS = 400;
+let processingRunId = 0;
 
 interface WorkbookActions {
   // Configuration
@@ -38,6 +45,8 @@ interface WorkbookActions {
 
   // Data processing
   processData: () => void;
+  processDataChunked: () => Promise<void>;
+  scheduleChunkedProcessing: () => void;
   setProcessedRows: (rows: DataRow[]) => void;
   updateRowData: (rowId: string, fieldKey: string, value: any) => void;
   deleteRow: (rowId: string) => void;
@@ -143,26 +152,161 @@ export const useWorkbookStore = create<WorkbookStore>()(
             });
             const effective = { ...pipelineMappings, fieldMappings: deduped };
             set({
-              mappingState: fieldMappingsToMappingState(effective.fieldMappings),
+              mappingState: fieldMappingsToMappingState(
+                effective.fieldMappings
+              ),
             });
             pipelineMappings = effective;
           }
 
           set({ pipelineMappings });
 
-          // Process data with backend-compatible structure
-          const processedData = processImportedDataWithMappings(
-            data,
-            currentSheetConfig.fields,
-            pipelineMappings,
-            state.transformRegistry || defaultTransforms
-          );
-          set({ processedData });
-
-          // Extract validation errors
-          const validationErrors = processedData.flatMap((row) => row.errors);
-          set({ validationErrors });
+          // If dataset is small, process immediately; otherwise, start background processing
+          const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+          if ((data.rows?.length || 0) <= threshold) {
+            const processedData = processImportedDataWithMappings(
+              data,
+              currentSheetConfig.fields,
+              pipelineMappings,
+              state.transformRegistry || defaultTransforms
+            );
+            set({ processedData });
+            const validationErrors = processedData.flatMap((row) => row.errors);
+            set({ validationErrors });
+          } else {
+            set({ processedData: [], validationErrors: [] });
+            // Kick off background chunked processing automatically
+            get().processDataChunked();
+          }
         }
+      },
+
+      // Chunked processing to avoid long main-thread stalls for very large datasets
+      processDataChunked: async () => {
+        const state = get();
+        if (!state.importedData) return;
+        const currentSheetConfig = state.config.sheets?.find(
+          (sheet) => sheet.slug === state.currentSheet
+        );
+        if (!currentSheetConfig) return;
+
+        const rows = state.importedData.rows || [];
+        const fields = currentSheetConfig.fields;
+        const pipeline = state.pipelineMappings;
+        const registry = state.transformRegistry || defaultTransforms;
+        // cancel previous runs and start a new one
+        const runId = ++processingRunId;
+        set({ isLoading: true });
+        const BATCH = 2000;
+        const processed: DataRow[] = [];
+
+        // Map + validate in batches (without uniqueness)
+        for (let start = 0; start < rows.length; start += BATCH) {
+          if (runId !== processingRunId) {
+            // aborted
+            return;
+          }
+          const end = Math.min(rows.length, start + BATCH);
+          for (let index = start; index < end; index++) {
+            if (runId !== processingRunId) return;
+            const row = rows[index];
+            const out: Record<string, any> = {};
+            const errors: ValidationError[] = [];
+            if (pipeline) {
+              for (const m of pipeline.fieldMappings || []) {
+                const { source, target, transform } = m;
+                if (!(source in row) || !target) continue;
+                const field = fields.find((f) => f.key === target);
+                if (!field) continue;
+                let v = row[source];
+                v = applyNamedTransform(v, transform, registry);
+                const coerced = transformValue(v, field.type);
+                out[target] = coerced;
+                errors.push(...validateField(coerced, field, index));
+              }
+            } else {
+              for (const [sourceColumn, targetField] of Object.entries(
+                state.mappingState
+              )) {
+                if (!targetField || row[sourceColumn] === undefined) continue;
+                const field = fields.find((f) => f.key === targetField);
+                if (!field) continue;
+                const coerced = transformValue(row[sourceColumn], field.type);
+                out[targetField] = coerced;
+                errors.push(...validateField(coerced, field, index));
+              }
+            }
+
+            for (const f of fields) {
+              if (f.required && !(f.key in out)) {
+                errors.push({
+                  row: index,
+                  field: f.key,
+                  message: `${f.label} is required but not mapped`,
+                  severity: "error",
+                });
+              }
+            }
+
+            processed.push({
+              id: `row-${index}`,
+              data: out,
+              errors,
+              isValid:
+                errors.filter((e) => e.severity === "error").length === 0,
+            });
+          }
+          // Emit partial progress and yield to the event loop
+          if (runId !== processingRunId) return;
+          set({ processedData: [...processed] });
+          await new Promise((r) => setTimeout(r, 0));
+        }
+
+        // Uniqueness validation pass
+        if (runId !== processingRunId) return;
+        const uniqueFields = fields.filter((f) => f.unique);
+        for (const f of uniqueFields) {
+          const seen = new Map<string, number>();
+          processed.forEach((r, idx) => {
+            const val = r.data[f.key];
+            if (val === undefined || val === null || val === "") return;
+            const key = String(val);
+            if (seen.has(key)) {
+              const first = seen.get(key)!;
+              const push = (rowIdx: number) => {
+                processed[rowIdx].errors.push({
+                  row: rowIdx,
+                  field: f.key,
+                  message: `${f.label} must be unique. Duplicate value '${key}' found`,
+                  severity: "error",
+                });
+                processed[rowIdx].isValid = false;
+              };
+              push(first);
+              push(idx);
+            } else {
+              seen.set(key, idx);
+            }
+          });
+        }
+
+        if (runId !== processingRunId) return;
+        set({ processedData: processed });
+        set({
+          validationErrors: processed.flatMap((r) => r.errors),
+          isLoading: false,
+        });
+      },
+
+      // Debounced trigger for chunked processing
+      scheduleChunkedProcessing: () => {
+        const state = get();
+        if (!state.importedData) return;
+        if (reprocessTimer) clearTimeout(reprocessTimer);
+        set({ isLoading: true });
+        reprocessTimer = setTimeout(() => {
+          get().processDataChunked();
+        }, PROCESS_DEBOUNCE_MS) as any;
       },
 
       clearImportedData: () => {
@@ -181,8 +325,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
             fieldMappings: mappingStateToFieldMappings(mapping),
           },
         });
-        // Reprocess data with new mapping
-        get().processData();
+        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+        if ((get().importedData?.rows.length || 0) <= threshold) {
+          get().processData();
+        } else {
+          get().scheduleChunkedProcessing();
+        }
       },
 
       setFieldMappings: (fieldMappings) => {
@@ -193,31 +341,37 @@ export const useWorkbookStore = create<WorkbookStore>()(
           if (!m.target) continue;
           targetToSource.set(m.target, m.source);
         }
-        const compacted: FieldMapping[] = Array.from(targetToSource.entries()).map(
-          ([target, source]) => ({ source, target })
-        );
+        const compacted: FieldMapping[] = Array.from(
+          targetToSource.entries()
+        ).map(([target, source]) => ({ source, target }));
         set({
           pipelineMappings: {
             ...(state.pipelineMappings || {}),
             fieldMappings: compacted,
           },
-          // keep legacy mappingState synchronized for components relying on it
           mappingState: fieldMappingsToMappingState(compacted),
         });
-        get().processData();
+        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+        if ((get().importedData?.rows.length || 0) <= threshold) {
+          get().processData();
+        } else {
+          get().scheduleChunkedProcessing();
+        }
       },
 
       setTransformRegistry: (registry) => {
         set({ transformRegistry: registry });
-        // Re-run processing because transforms may change output
-        get().processData();
+        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+        if ((get().importedData?.rows.length || 0) <= threshold) {
+          get().processData();
+        } else {
+          get().scheduleChunkedProcessing();
+        }
       },
 
       updateMapping: (sourceColumn, targetField) => {
         const state = get();
-        // Start from existing mapping
         const newMapping: MappingState = { ...state.mappingState };
-        // If assigning to a target, clear it from any other source first to enforce uniqueness
         if (targetField) {
           for (const [src, tgt] of Object.entries(newMapping)) {
             if (src !== sourceColumn && tgt === targetField) {
@@ -232,8 +386,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
             fieldMappings: mappingStateToFieldMappings(newMapping),
           },
         });
-        // Reprocess data with updated mapping
-        get().processData();
+        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+        if ((get().importedData?.rows.length || 0) <= threshold) {
+          get().processData();
+        } else {
+          get().scheduleChunkedProcessing();
+        }
       },
 
       generateAutoMapping: () => {
@@ -256,7 +414,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
               fieldMappings: mappingStateToFieldMappings(autoMapping),
             },
           });
-          get().processData();
+          const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
+          if ((get().importedData?.rows.length || 0) <= threshold) {
+            get().processData();
+          } else {
+            set({ processedData: [], validationErrors: [] });
+          }
         }
       },
 
