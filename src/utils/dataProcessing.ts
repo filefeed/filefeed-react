@@ -42,31 +42,52 @@ export const parseCSV = (file: File): Promise<ImportedData> => {
         const rows: Record<string, any>[] = [];
         let headers: string[] = [];
         let parseErrors: any[] = [];
+        let headerMap: Map<string, string> | null = null; // original -> normalized
 
         const config: any = {
           header: true,
           skipEmptyLines: true,
           worker: true,
           encoding,
-          transform: (value: string) =>
-            typeof value === "string" ? value.trim() : value,
-          transformHeader: (header: string) =>
-            typeof header === "string" ? header.trim() : header,
           step: (result: any) => {
-            // capture headers from meta
             if (!headers.length && Array.isArray(result.meta?.fields)) {
-              headers = (result.meta.fields as string[]) || headers;
+              const originalHeaders = (result.meta.fields as string[]) || [];
+              const used = new Set<string>();
+              headerMap = new Map<string, string>();
+              headers = originalHeaders.map((h) => {
+                const base = typeof h === "string" ? h.trim() : String(h || "");
+                let name = base || "";
+                if (used.has(name)) {
+                  let i = 2;
+                  while (used.has(`${name}_${i}`)) i++;
+                  name = `${name}_${i}`;
+                }
+                used.add(name);
+                headerMap!.set(h, name);
+                return name;
+              });
             }
-            // accumulate row
             if (result?.data && typeof result.data === "object") {
-              rows.push(result.data as Record<string, any>);
+              const row = result.data as Record<string, any>;
+              const normalized: Record<string, any> = {};
+              if (headerMap) {
+                for (const [orig, norm] of headerMap.entries()) {
+                  const v = row[orig];
+                  normalized[norm] = typeof v === "string" ? v.trim() : v;
+                }
+              } else {
+                for (const k of Object.keys(row)) {
+                  const v = row[k];
+                  normalized[k] = typeof v === "string" ? v.trim() : v;
+                }
+              }
+              rows.push(normalized);
             }
             if (Array.isArray(result.errors) && result.errors.length) {
               parseErrors = parseErrors.concat(result.errors);
             }
           },
           complete: (_final) => {
-            // If headers are still not known, infer from first row keys
             if (!headers.length && rows.length) {
               headers = Object.keys(rows[0]);
             }
@@ -86,12 +107,16 @@ export const parseCSV = (file: File): Promise<ImportedData> => {
             });
           },
         };
-        Papa.parse(file as any, config);
+        try {
+          Papa.parse(file as any, config);
+        } catch (err) {
+          const fallback: any = { ...config, worker: false };
+          Papa.parse(file as any, fallback);
+        }
       } catch (err) {
         reject(err);
       }
     };
-    // Read a small sample to determine encoding, then run full streaming parse
     const sampleBlob = file.slice(0, Math.min(file.size, 512 * 1024));
     sampler.readAsArrayBuffer(sampleBlob);
   });
@@ -108,7 +133,8 @@ export const defaultTransforms: TransformRegistry = {
   },
   trim: (v: any) => (v == null ? v : String(v).trim()),
   toNumber: (v: any) => (v == null || v === "" ? null : Number(v)),
-  formatPhoneNumber: (v: any) => (v == null ? v : String(v).replace(/[^0-9]/g, "")),
+  formatPhoneNumber: (v: any) =>
+    v == null ? v : String(v).replace(/[^0-9]/g, ""),
   formatEmail: (v: any) => (v == null ? v : String(v).trim().toLowerCase()),
 };
 
@@ -147,16 +173,19 @@ export const validatePipelineConfig = (
   availableTransforms: string[] = Object.keys(defaultTransforms)
 ): string[] => {
   const errors: string[] = [];
-  const required = new Set(fields.filter(f => f.required).map(f => f.key));
+  const required = new Set(fields.filter((f) => f.required).map((f) => f.key));
   const mappedTargets = new Set<string>();
   for (const m of pipeline.fieldMappings || []) {
     if (m.target) mappedTargets.add(m.target);
     if (m.transform && !availableTransforms.includes(m.transform)) {
-      errors.push(`Transform '${m.transform}' referenced by mapping ${m.source} -> ${m.target} is not available`);
+      errors.push(
+        `Transform '${m.transform}' referenced by mapping ${m.source} -> ${m.target} is not available`
+      );
     }
   }
   for (const key of required) {
-    if (!mappedTargets.has(key)) errors.push(`Missing mapping for required field '${key}'`);
+    if (!mappedTargets.has(key))
+      errors.push(`Missing mapping for required field '${key}'`);
   }
   return errors;
 };
@@ -174,7 +203,7 @@ export const processImportedDataWithMappings = (
     for (const m of pipeline.fieldMappings || []) {
       const { source, target, transform } = m;
       if (!(source in row)) continue;
-      const field = fields.find(f => f.key === target);
+      const field = fields.find((f) => f.key === target);
       if (!field) continue;
       let v = row[source];
       v = applyNamedTransform(v, transform, registry);
@@ -185,15 +214,25 @@ export const processImportedDataWithMappings = (
 
     for (const f of fields) {
       if (f.required && !(f.key in processed)) {
-        errors.push({ row: index, field: f.key, message: `${f.label} is required but not mapped`, severity: "error" });
+        errors.push({
+          row: index,
+          field: f.key,
+          message: `${f.label} is required but not mapped`,
+          severity: "error",
+        });
       }
     }
 
-    return { id: `row-${index}`, data: processed, errors, isValid: errors.filter(e => e.severity === "error").length === 0 };
+    return {
+      id: `row-${index}`,
+      data: processed,
+      errors,
+      isValid: errors.filter((e) => e.severity === "error").length === 0,
+    };
   });
 
   // Uniqueness across all rows
-  const uniqueFields = fields.filter(f => f.unique);
+  const uniqueFields = fields.filter((f) => f.unique);
   for (const f of uniqueFields) {
     const seen = new Map<string, number>();
     rows.forEach((r, idx) => {
@@ -203,7 +242,12 @@ export const processImportedDataWithMappings = (
       if (seen.has(key)) {
         const first = seen.get(key)!;
         const push = (rowIdx: number) => {
-          rows[rowIdx].errors.push({ row: rowIdx, field: f.key, message: `${f.label} must be unique. Duplicate value '${key}' found`, severity: "error" });
+          rows[rowIdx].errors.push({
+            row: rowIdx,
+            field: f.key,
+            message: `${f.label} must be unique. Duplicate value '${key}' found`,
+            severity: "error",
+          });
           rows[rowIdx].isValid = false;
         };
         push(first);
@@ -216,7 +260,6 @@ export const processImportedDataWithMappings = (
 
   return rows;
 };
-
 
 export const parseExcel = (file: File): Promise<ImportedData> => {
   return new Promise((resolve, reject) => {
