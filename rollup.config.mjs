@@ -13,14 +13,14 @@ export default {
     {
       file: pkg.main,
       format: 'cjs',
-      sourcemap: true,
+      sourcemap: false,
       exports: 'named',
       intro: '"use client";',
     },
     {
       file: pkg.module || 'dist/index.esm.js',
       format: 'esm',
-      sourcemap: true,
+      sourcemap: false,
       intro: '"use client";',
     },
   ],
@@ -29,6 +29,13 @@ export default {
     'react-dom',
     'react/jsx-runtime',
     'react/jsx-dev-runtime',
+    // heavy libs we want the consumer to bundle from node_modules instead of inlining
+    'xlsx',
+    'papaparse',
+    'jschardet',
+    'zustand',
+    '@mantine/core',
+    '@tabler/icons-react',
   ],
   onwarn(warning, warn) {
     if (
