@@ -9,6 +9,9 @@ export interface CreateWorkbookConfig {
   sheets?: SheetConfig[];
   actions?: Action[];
   settings?: WorkbookSettings;
+  // Optional registries that can be provided by consumers
+  transformRegistry?: TransformRegistry;
+  validationRegistry?: ValidationRegistry;
 }
 
 export interface SheetConfig {
@@ -28,12 +31,18 @@ export interface FieldConfig {
   unique?: boolean;
   validations?: ValidationRule[];
   description?: string;
+  // Default transform to apply when this field is mapped (unless overridden by mapping-level transform)
+  defaultTransform?: string;
 }
 
 export interface ValidationRule {
   type: "regex" | "min" | "max" | "custom";
   value?: any;
   message: string;
+  // For custom validation, lookup by name in ValidationRegistry
+  name?: string;
+  // Optional arguments passed to the custom validator
+  args?: any;
 }
 
 export interface Action {
@@ -85,6 +94,18 @@ export interface PipelineMappings {
 // Frontend-only registry of transform implementations
 export type TransformRegistry = Record<string, (value: any) => any>;
 
+// Frontend-only registry of validation implementations (custom per-field)
+export type ValidationRegistry = Record<
+  string,
+  (
+    value: any,
+    field: FieldConfig,
+    rowIndex: number,
+    rowData: Record<string, any>,
+    args?: any
+  ) => string | ValidationError | null | undefined | boolean
+>;
+
 export interface ValidationError {
   row: number;
   field: string;
@@ -110,6 +131,7 @@ export interface WorkbookState {
   // Backend-compatible structures (optional in state)
   pipelineMappings?: PipelineMappings;
   transformRegistry?: TransformRegistry;
+  validationRegistry?: ValidationRegistry;
 }
 
 // Event types for SDK callbacks

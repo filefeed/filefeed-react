@@ -10,6 +10,7 @@ import {
   FieldMapping,
   PipelineMappings,
   TransformRegistry,
+  ValidationRegistry,
 } from "../types";
 
 // File parsing utilities
@@ -194,7 +195,8 @@ export const processImportedDataWithMappings = (
   importedData: ImportedData,
   fields: FieldConfig[],
   pipeline: PipelineMappings,
-  registry: TransformRegistry = defaultTransforms
+  registry: TransformRegistry = defaultTransforms,
+  validationRegistry?: ValidationRegistry
 ): DataRow[] => {
   const rows: DataRow[] = importedData.rows.map((row, index) => {
     const processed: Record<string, any> = {};
@@ -206,10 +208,11 @@ export const processImportedDataWithMappings = (
       const field = fields.find((f) => f.key === target);
       if (!field) continue;
       let v = row[source];
-      v = applyNamedTransform(v, transform, registry);
+      const tName = transform ?? field.defaultTransform;
+      v = applyNamedTransform(v, tName, registry);
       const coerced = transformValue(v, field.type);
       processed[target] = coerced;
-      errors.push(...validateField(coerced, field, index));
+      errors.push(...validateFieldWithRegistry(coerced, field, index, processed, validationRegistry));
     }
 
     for (const f of fields) {
@@ -304,18 +307,17 @@ export const parseExcel = (file: File): Promise<ImportedData> => {
 };
 
 // Validation utilities
-export const validateField = (
+export const validateFieldWithRegistry = (
   value: any,
   field: FieldConfig,
-  rowIndex: number
+  rowIndex: number,
+  rowData: Record<string, any> = {},
+  registry?: ValidationRegistry
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
 
   // Required validation
-  if (
-    field.required &&
-    (value === null || value === undefined || value === "")
-  ) {
+  if (field.required && (value === null || value === undefined || value === "")) {
     errors.push({
       row: rowIndex,
       field: field.key,
@@ -376,6 +378,36 @@ export const validateField = (
   // Custom validations
   if (field.validations) {
     field.validations.forEach((validation) => {
+      if (validation.type === "custom" && registry && validation.name) {
+        const fn = registry[validation.name];
+        if (typeof fn === "function") {
+          const res = fn(value, field, rowIndex, rowData, validation.args);
+          if (res === false) {
+            errors.push({
+              row: rowIndex,
+              field: field.key,
+              message: validation.message || `${field.label} failed validation`,
+              severity: "error",
+            });
+          } else if (typeof res === "string") {
+            errors.push({
+              row: rowIndex,
+              field: field.key,
+              message: res,
+              severity: "error",
+            });
+          } else if (res && typeof res === "object") {
+            const maybe = res as ValidationError;
+            errors.push({
+              row: maybe.row ?? rowIndex,
+              field: maybe.field ?? field.key,
+              message: maybe.message || validation.message || `${field.label} failed validation`,
+              severity: maybe.severity || "error",
+            });
+          }
+          return;
+        }
+      }
       const validationError = validateRule(value, validation, field, rowIndex);
       if (validationError) {
         errors.push(validationError);
@@ -385,6 +417,13 @@ export const validateField = (
 
   return errors;
 };
+
+// Backwards-compatible wrapper
+export const validateField = (
+  value: any,
+  field: FieldConfig,
+  rowIndex: number
+): ValidationError[] => validateFieldWithRegistry(value, field, rowIndex);
 
 const validateRule = (
   value: any,

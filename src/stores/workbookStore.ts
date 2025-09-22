@@ -17,7 +17,7 @@ import {
   mappingStateToFieldMappings,
   fieldMappingsToMappingState,
   defaultTransforms,
-  validateField,
+  validateFieldWithRegistry,
   transformValue,
   applyNamedTransform,
 } from "../utils/dataProcessing";
@@ -78,6 +78,7 @@ const initialState: WorkbookState = {
   isLoading: false,
   pipelineMappings: undefined,
   transformRegistry: defaultTransforms,
+  validationRegistry: undefined,
 };
 
 export const useWorkbookStore = create<WorkbookStore>()(
@@ -86,7 +87,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
       ...initialState,
 
       setConfig: (config) => {
-        set({ config });
+        set({
+          config,
+          // allow consumers to provide custom registries
+          transformRegistry: config.transformRegistry || defaultTransforms,
+          validationRegistry: config.validationRegistry,
+        });
         // Set first sheet as current if available
         if (config.sheets && config.sheets.length > 0) {
           const first = config.sheets[0];
@@ -136,8 +142,15 @@ export const useWorkbookStore = create<WorkbookStore>()(
             );
             // keep legacy mapping state
             set({ mappingState: autoMapping });
+            // build fieldMappings with default transforms when available
+            const fm = mappingStateToFieldMappings(autoMapping).map((m) => {
+              const f = currentSheetConfig.fields.find((x) => x.key === m.target);
+              return f?.defaultTransform
+                ? { ...m, transform: f.defaultTransform }
+                : m;
+            });
             pipelineMappings = {
-              fieldMappings: mappingStateToFieldMappings(autoMapping),
+              fieldMappings: fm,
             };
           } else {
             // Keep mappingState in sync for UI components relying on it
@@ -184,6 +197,7 @@ export const useWorkbookStore = create<WorkbookStore>()(
         const fields = currentSheetConfig.fields;
         const pipeline = state.pipelineMappings;
         const registry = state.transformRegistry || defaultTransforms;
+        const vRegistry = state.validationRegistry;
         // cancel previous runs and start a new one
         const runId = ++processingRunId;
         set({ isLoading: true });
@@ -209,10 +223,19 @@ export const useWorkbookStore = create<WorkbookStore>()(
                 const field = fields.find((f) => f.key === target);
                 if (!field) continue;
                 let v = row[source];
-                v = applyNamedTransform(v, transform, registry);
+                const tName = transform ?? field.defaultTransform;
+                v = applyNamedTransform(v, tName, registry);
                 const coerced = transformValue(v, field.type);
                 out[target] = coerced;
-                errors.push(...validateField(coerced, field, index));
+                errors.push(
+                  ...validateFieldWithRegistry(
+                    coerced,
+                    field,
+                    index,
+                    out,
+                    vRegistry
+                  )
+                );
               }
             } else {
               for (const [sourceColumn, targetField] of Object.entries(
@@ -221,9 +244,20 @@ export const useWorkbookStore = create<WorkbookStore>()(
                 if (!targetField || row[sourceColumn] === undefined) continue;
                 const field = fields.find((f) => f.key === targetField);
                 if (!field) continue;
-                const coerced = transformValue(row[sourceColumn], field.type);
+                let raw = row[sourceColumn];
+                const tName = field.defaultTransform;
+                raw = applyNamedTransform(raw, tName, registry);
+                const coerced = transformValue(raw, field.type);
                 out[targetField] = coerced;
-                errors.push(...validateField(coerced, field, index));
+                errors.push(
+                  ...validateFieldWithRegistry(
+                    coerced,
+                    field,
+                    index,
+                    out,
+                    vRegistry
+                  )
+                );
               }
             }
 
@@ -350,23 +384,38 @@ export const useWorkbookStore = create<WorkbookStore>()(
       // Update a single mapping entry and enforce unique targets (last win)
       updateMapping: (sourceColumn, targetField) => {
         const state = get();
+        const currentSheetConfig = state.config.sheets?.find(
+          (s) => s.slug === state.currentSheet
+        );
         const newMapping: MappingState = { ...state.mappingState };
-        // If assigning a target, clear that target from other sources to keep uniqueness
+        // Enforce uniqueness: only one source can map to a target
         if (targetField) {
           for (const [src, tgt] of Object.entries(newMapping)) {
-            if (src !== sourceColumn && tgt === targetField) {
-              newMapping[src] = null;
-            }
+            if (src !== sourceColumn && tgt === targetField) newMapping[src] = null;
           }
         }
         newMapping[sourceColumn] = targetField;
+
+        // Preserve transforms and apply default when needed
+        const existing = state.pipelineMappings?.fieldMappings || [];
+        let next: FieldMapping[] = existing.filter((m) => m.source !== sourceColumn);
+        if (targetField) {
+          next = next.filter((m) => m.target !== targetField);
+          let transform = existing.find((m) => m.source === sourceColumn)?.transform;
+          if (!transform && currentSheetConfig) {
+            const f = currentSheetConfig.fields.find((x) => x.key === targetField);
+            transform = f?.defaultTransform;
+          }
+          next.push({ source: sourceColumn, target: targetField, transform });
+        }
+
         set({
           mappingState: newMapping,
           pipelineMappings: {
-            fieldMappings: mappingStateToFieldMappings(newMapping),
+            ...(state.pipelineMappings || {}),
+            fieldMappings: next,
           },
         });
-        // Do not auto-process; wait for Continue
         get().cancelProcessing();
         set({ processedData: [], validationErrors: [] });
       },
@@ -374,15 +423,13 @@ export const useWorkbookStore = create<WorkbookStore>()(
       // Set full FieldMapping[] (advanced mapping UI)
       setFieldMappings: (fieldMappings) => {
         const state = get();
-        // Enforce uniqueness by target: last mapping wins
-        const targetToSource = new Map<string, string>();
+        // Enforce uniqueness by target: last mapping wins, preserve transform
+        const byTarget = new Map<string, FieldMapping>();
         for (const m of fieldMappings || []) {
           if (!m.target) continue;
-          targetToSource.set(m.target, m.source);
+          byTarget.set(m.target, { ...m });
         }
-        const compacted: FieldMapping[] = Array.from(targetToSource.entries()).map(
-          ([target, source]) => ({ source, target })
-        );
+        const compacted: FieldMapping[] = Array.from(byTarget.values());
         set({
           pipelineMappings: {
             ...(state.pipelineMappings || {}),
@@ -417,10 +464,14 @@ export const useWorkbookStore = create<WorkbookStore>()(
             currentSheetConfig.fields,
             currentSheetConfig.mappingConfidenceThreshold
           );
+          const fm = mappingStateToFieldMappings(autoMapping).map((m) => {
+            const f = currentSheetConfig.fields.find((x) => x.key === m.target);
+            return f?.defaultTransform ? { ...m, transform: f.defaultTransform } : m;
+          });
           set({
             mappingState: autoMapping,
             pipelineMappings: {
-              fieldMappings: mappingStateToFieldMappings(autoMapping),
+              fieldMappings: fm,
             },
           });
           get().cancelProcessing();
@@ -442,12 +493,15 @@ export const useWorkbookStore = create<WorkbookStore>()(
                 state.importedData,
                 currentSheetConfig.fields,
                 state.pipelineMappings,
-                state.transformRegistry || defaultTransforms
+                state.transformRegistry || defaultTransforms,
+                state.validationRegistry
               )
-            : processImportedData(
+            : processImportedDataWithMappings(
                 state.importedData,
                 currentSheetConfig.fields,
-                state.mappingState
+                { fieldMappings: mappingStateToFieldMappings(state.mappingState) },
+                state.transformRegistry || defaultTransforms,
+                state.validationRegistry
               );
           set({ processedData });
 
@@ -479,7 +533,13 @@ export const useWorkbookStore = create<WorkbookStore>()(
               const rowIndex = state.processedData.findIndex(
                 (r) => r.id === rowId
               );
-              const fieldErrors = validateField(value, field, rowIndex);
+              const fieldErrors = validateFieldWithRegistry(
+                value,
+                field,
+                rowIndex,
+                newData,
+                state.validationRegistry
+              );
               errors.push(...fieldErrors);
             }
 

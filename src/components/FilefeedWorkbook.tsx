@@ -32,7 +32,7 @@ import { Providers } from "../app/providers";
 import { useManualEntry } from "../hooks/useManualEntry";
 import { useDynamicRowCount } from "../hooks/useDynamicRowCount";
 import { useFileImport } from "../hooks/useFileImport";
-import { transformValue, validateField, validatePipelineConfig, mappingStateToFieldMappings } from "../utils/dataProcessing";
+import { transformValue, validateFieldWithRegistry, validatePipelineConfig, mappingStateToFieldMappings } from "../utils/dataProcessing";
 
 const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
   ({ config, events, theme = "light", className }, ref) => {
@@ -56,6 +56,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       pipelineMappings,
       setFieldMappings,
       transformRegistry,
+      validationRegistry,
       setProcessedRows,
       setMapping,
       clearImportedData,
@@ -196,7 +197,15 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           const raw = (data as any)[field.key];
           const coerced = transformValue(raw, field.type);
           processed[field.key] = coerced;
-          errors.push(...validateField(coerced, field, index));
+          errors.push(
+            ...validateFieldWithRegistry(
+              coerced,
+              field,
+              index,
+              processed,
+              validationRegistry
+            )
+          );
         });
         return {
           id: `manual-row-${index}`,
