@@ -1,6 +1,6 @@
 {
   "name": "filefeed-sdk",
-  "version": "0.2.20",
+  "version": "0.2.22",
   "description": "A powerful data onboarding SDK for importing, mapping, validating, and transforming structured data",
   "main": "dist/client.js",
   "module": "dist/client.esm.js",
