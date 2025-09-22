@@ -1,0 +1,6 @@
+# Exclude source maps and any non-essential build artifacts from the published package
+# Note: package.json `files` already whitelists JS and .d.ts, this is belt-and-suspenders
+
+dist/**/*.map
+*.log
+.DS_Store

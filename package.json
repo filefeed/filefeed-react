@@ -1,6 +1,6 @@
 {
   "name": "filefeed-sdk",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "description": "A powerful data onboarding SDK for importing, mapping, validating, and transforming structured data",
   "main": "dist/client.js",
   "module": "dist/client.esm.js",
@@ -13,12 +13,16 @@
     }
   },
   "files": [
-    "dist"
+    "dist/*.js",
+    "dist/**/*.d.ts",
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": true,
   "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build-lib": "tsc -p tsconfig.lib.json && tsc-alias -p tsconfig.lib.json && rollup -c",
-    "prepublishOnly": "npm run build-lib"
+    "prepublishOnly": "npm run clean && npm run build-lib"
   },
   "repository": {
     "type": "git",
