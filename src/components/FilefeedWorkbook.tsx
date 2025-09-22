@@ -24,6 +24,7 @@ import {
   ScrollArea,
 } from "@mantine/core";
 import { IconUpload, IconEdit } from "@tabler/icons-react";
+import { IconTrash } from "@tabler/icons-react";
 import { FilefeedSDKProps, FilefeedWorkbookRef, DataRow } from "../types";
 import { useWorkbookStore } from "../stores/workbookStore";
 import MappingInterface from "./MappingInterface";
@@ -59,6 +60,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       setMapping,
       clearImportedData,
       updateRowData,
+      deleteRow,
+      deleteInvalidRows,
       processOnContinue,
       reset: resetStore,
     } = useWorkbookStore();
@@ -222,11 +225,22 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       [processedData]
     );
     const invalidCount = allCount - validCount;
+    // Keep the currently edited row visible under the "Invalid" filter so it
+    // doesn't disappear mid-typing when it becomes valid.
+    const [editingRowId, setEditingRowId] = useState<string | null>(null);
+    const unpinTimerRef = useRef<number | null>(null);
     const visibleProcessedRows = useMemo(() => {
-      if (reviewFilter === "valid") return processedData.filter((r) => r.isValid);
-      if (reviewFilter === "invalid") return processedData.filter((r) => !r.isValid);
-      return processedData;
-    }, [processedData, reviewFilter]);
+      let rows = processedData as typeof processedData;
+      if (reviewFilter === "valid") rows = processedData.filter((r) => r.isValid);
+      else if (reviewFilter === "invalid") rows = processedData.filter((r) => !r.isValid);
+      if (reviewFilter === "invalid" && editingRowId) {
+        const editing = processedData.find((r) => r.id === editingRowId);
+        if (editing && !rows.some((r) => r.id === editing.id)) {
+          rows = [editing, ...rows];
+        }
+      }
+      return rows;
+    }, [processedData, reviewFilter, editingRowId]);
 
     // Virtualization for Review table
     const REVIEW_ROW_HEIGHT = 32; // px, includes borders
@@ -289,6 +303,29 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     Review Mapped Data
                   </Text>
                   <Group gap="md">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      color="red"
+                      onClick={() => deleteInvalidRows()}
+                      disabled={invalidCount === 0}
+                      styles={{
+                        root: {
+                          backgroundColor: "white",
+                          borderColor: "var(--mantine-color-red-6)",
+                          color: "var(--mantine-color-red-6)",
+                          "&:hover": {
+                            backgroundColor: "var(--mantine-color-red-0)",
+                          },
+                          "&:disabled": {
+                            borderColor: "var(--mantine-color-gray-4)",
+                            color: "var(--mantine-color-gray-6)",
+                          },
+                        },
+                      }}
+                    >
+                      Delete all invalid
+                    </Button>
                     <Button
                       variant="outline"
                       size="xs"
@@ -441,6 +478,23 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                               </Table.Th>
                             );
                           })}
+                        <Table.Th
+                          key="__actions__"
+                          style={{
+                            color: "var(--mantine-color-gray-8)",
+                            fontWeight: 500,
+                            fontSize: "12px",
+                            borderBottom: "1px solid var(--mantine-color-gray-3)",
+                            backgroundColor: "var(--mantine-color-gray-0)",
+                            padding: "6px 10px",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 1,
+                            width: 80,
+                          }}
+                        >
+                          Actions
+                        </Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -448,7 +502,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       {reviewPaddingTop > 0 && (
                         <Table.Tr>
                           <Table.Td
-                            colSpan={Math.max(1, mappedFields.length)}
+                            colSpan={Math.max(1, mappedFields.length) + 1}
                             style={{ height: reviewPaddingTop, padding: 0, border: "none", background: "transparent" }}
                           />
                         </Table.Tr>
@@ -486,6 +540,23 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                     onChange={(e) =>
                                       updateRowData(pRow.id, targetField, e.target.value)
                                     }
+                                    onFocus={() => {
+                                      if (unpinTimerRef.current) {
+                                        window.clearTimeout(unpinTimerRef.current);
+                                        unpinTimerRef.current = null;
+                                      }
+                                      setEditingRowId(pRow.id);
+                                    }}
+                                    onBlur={() => {
+                                      // small delay to allow focus to move within the same row
+                                      if (unpinTimerRef.current) {
+                                        window.clearTimeout(unpinTimerRef.current);
+                                      }
+                                      unpinTimerRef.current = window.setTimeout(() => {
+                                        setEditingRowId((curr) => (curr === pRow.id ? null : curr));
+                                        unpinTimerRef.current = null;
+                                      }, 120);
+                                    }}
                                     title={firstError?.message}
                                     style={{
                                       width: "100%",
@@ -504,13 +575,41 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                 </Table.Td>
                               );
                             })}
+                          {/* Actions column */}
+                          <Table.Td
+                            key={`${pRow.id}-__actions__`}
+                            style={{
+                              borderBottom: "1px solid var(--mantine-color-gray-3)",
+                              padding: 0,
+                              backgroundColor: "white",
+                              textAlign: "center",
+                              width: 80,
+                            }}
+                          >
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={() => deleteRow(pRow.id)}
+                              leftSection={<IconTrash size={14} />}
+                              styles={{
+                                root: {
+                                  height: `${REVIEW_ROW_HEIGHT - 6}px`,
+                                  paddingLeft: 8,
+                                  paddingRight: 8,
+                                },
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Table.Td>
                         </Table.Tr>
                       ))}
                       {/* Bottom spacer row */}
                       {reviewPaddingBottom > 0 && (
                         <Table.Tr>
                           <Table.Td
-                            colSpan={Math.max(1, mappedFields.length)}
+                            colSpan={Math.max(1, mappedFields.length) + 1}
                             style={{ height: reviewPaddingBottom, padding: 0, border: "none", background: "transparent" }}
                           />
                         </Table.Tr>

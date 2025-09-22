@@ -52,6 +52,7 @@ interface WorkbookActions {
   setProcessedRows: (rows: DataRow[]) => void;
   updateRowData: (rowId: string, fieldKey: string, value: any) => void;
   deleteRow: (rowId: string) => void;
+  deleteInvalidRows: () => void;
   addRow: () => void;
 
   // Loading states
@@ -509,6 +510,14 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
         // Update validation errors
         const validationErrors = updatedData.flatMap((row) => row.errors);
+        set({ validationErrors });
+      },
+
+      deleteInvalidRows: () => {
+        const state = get();
+        const kept = state.processedData.filter((row) => row.isValid);
+        set({ processedData: kept });
+        const validationErrors = kept.flatMap((row) => row.errors || []);
         set({ validationErrors });
       },
 
