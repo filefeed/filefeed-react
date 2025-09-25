@@ -26,9 +26,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/filefeed/filefeed-sdk.git"
+    "url": "git+https://github.com/nikolicigor/filefeed-react.git"
   },
-  "homepage": "https://github.com/filefeed/filefeed-sdk#readme",
+  "homepage": "https://sftpsync.io",
   "bugs": {
     "url": "https://github.com/filefeed/filefeed-sdk/issues"
   },
