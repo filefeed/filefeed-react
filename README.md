@@ -363,6 +363,17 @@ interface DataRow {
 - If your custom validator isn’t running, ensure `validationRegistry` is provided and the field rule uses `type: "custom"` with a matching `name`.
 - If mapping a large file, processing won’t auto-start until you click Continue (by design to avoid churn). Small files process quickly.
 
+
+## Contact / Support
+
+Questions, feedback, or enterprise pricing?  
+📬 Email: [igor@sftpsync.io](mailto:igor@sftpsync.io)
+
+- Bug reports: please open an issue on GitHub (include repro + sample file)
+- Security: email with subject **[SECURITY]** to the address above
+- Partnerships & enterprise: same email, subject **[ENTERPRISE]**
+
+
 ## License
 
 MIT Filefeed
