@@ -3,4 +3,4 @@ node_modules
 .next
 .rollup.cache
 dist
-filefeed-sdk-*.tgz
+filefeed-react-*.tgz

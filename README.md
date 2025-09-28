@@ -1,4 +1,4 @@
-# Filefeed SDK
+# @filefeed/react
 
 An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to your schema, apply transforms and validations, review, and submit.
 
@@ -15,7 +15,7 @@ An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to y
 ## Installation
 
 ```
-npm install filefeed-sdk
+npm install @filefeed/react
 ```
 
 That’s it. No additional installs, providers, or CSS imports are required. The SDK bundles its UI runtime and styles. Requires React 17+ in your app.
@@ -28,7 +28,7 @@ import {
   FilefeedWorkbook,
   type CreateWorkbookConfig,
   type FilefeedWorkbookRef,
-} from "filefeed-sdk";
+} from "@filefeed/react";
 
 const config: CreateWorkbookConfig = {
   name: "Customer Import",
@@ -80,7 +80,7 @@ export default function Page() {
 This feature is available only with an active FileFeed subscription. Offloading files larger than 10MB to the FileFeed backend is disabled by default. If you have access, configure once in your app:
 
 ```ts
-import { configureBackendClient } from "filefeed-sdk";
+import { configureBackendClient } from "@filefeed/react";
 
 configureBackendClient({
   getUploadUrl: async (file, ctx) => {
@@ -128,7 +128,7 @@ The SDK supports per-field transforms and validations that run during processing
 You can provide both registries on the root `CreateWorkbookConfig` so they are available in the Mapping UI and processing engine:
 
 ```ts
-import type { CreateWorkbookConfig } from "filefeed-sdk";
+import type { CreateWorkbookConfig } from "@filefeed/react";
 
 const transformRegistry = {
   trim: (v: any) => (v == null ? v : String(v).trim()),
@@ -219,7 +219,7 @@ In Create React App (or any React app), you can wire registries and defaults dir
 
 ```tsx
 import React, { useRef, useState } from "react";
-import FilefeedWorkbook from "filefeed-sdk";
+import FilefeedWorkbook from "@filefeed/react";
 
 const transformRegistry = {
   trim: (v: any) => (v == null ? v : String(v).trim()),
