@@ -42,6 +42,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [draggedSource, setDraggedSource] = useState<string | null>(null);
+  const [lastHoveredSource, setLastHoveredSource] = useState<string | null>(null);
 
   const handleMappingUpdate = (
     sourceColumn: string,
@@ -230,7 +231,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             : "white",
                         transition: "all 0.2s ease",
                       }}
-                      onMouseEnter={() => setHoveredSource(header)}
+                      onMouseEnter={() => { setHoveredSource(header); setLastHoveredSource(header); }}
                       onMouseLeave={() => setHoveredSource(null)}
                     >
                       <Flex align="center" style={{ flex: 1 }} gap="md">
@@ -254,14 +255,25 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                             onChange={(value) =>
                               handleMappingUpdate(header, value)
                             }
-                            data={fields.map((field) => ({
-                              value: field.key,
-                              label: field.label,
-                            }))}
-                            searchable
+                            data={(() => {
+                              const currentTarget = mappedField
+                                ? fields.find((f) => f.key === mappedField)
+                                : undefined;
+                              const options = [
+                                ...(currentTarget
+                                  ? [{ value: currentTarget.key, label: currentTarget.label }]
+                                  : []),
+                                ...availableTargets.map((f) => ({ value: f.key, label: f.label })),
+                              ];
+                              // de-duplicate by value while preserving order
+                              return options.filter((opt, idx, arr) =>
+                                arr.findIndex((o) => o.value === opt.value) === idx
+                              );
+                            })()}
+                            searchable={false}
                             clearable
                             size="xs"
-                            comboboxProps={{ withinPortal: true, zIndex: 9999 }}
+                            comboboxProps={{ withinPortal: true, zIndex: 10020 }}
                             styles={{
                               input: {
                                 fontSize: "12px",
@@ -273,28 +285,32 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                               },
                             }}
                           />
-                          {transformRegistry && isMapped && (
+                          {(() => {
+                            const existingTransform = (fieldMappings || []).find(
+                              (m) => m.source === header
+                            )?.transform;
+                            const hasRegistry = !!transformRegistry && Object.keys(transformRegistry || {}).length > 0;
+                            return isMapped && (hasRegistry || !!existingTransform);
+                          })() && (
                             <Select
                               placeholder="Transform"
-                              value={
-                                (fieldMappings || []).find(
-                                  (m) => m.source === header
-                                )?.transform || null
-                              }
-                              onChange={(value) =>
-                                handleTransformUpdate(header, value)
-                              }
-                              data={[
-                                { value: "", label: "None" },
-                                ...Object.keys(transformRegistry).map(
-                                  (name) => ({ value: name, label: name })
-                                ),
-                              ]}
+                              value={(fieldMappings || []).find((m) => m.source === header)?.transform || null}
+                              onChange={(value) => {
+                                const v = value === "none" ? null : value;
+                                handleTransformUpdate(header, v);
+                              }}
+                              data={(() => {
+                                const keys = Object.keys(transformRegistry || {});
+                                return [
+                                  { value: "none", label: "None" },
+                                  ...keys.map((name) => ({ value: name, label: name })),
+                                ];
+                              })()}
                               size="xs"
                               clearable
                               comboboxProps={{
                                 withinPortal: true,
-                                zIndex: 4000,
+                                zIndex: 10020,
                               }}
                               styles={{
                                 input: {
@@ -323,10 +339,10 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
             </Text>
 
             <Box style={{ height: "440px", overflow: "auto" }}>
-              {hoveredSource ? (
+              {(() => { const previewKey = hoveredSource ?? lastHoveredSource; return previewKey; })() ? (
                 <Box>
                   <Text size="sm" fw={500} c="gray.7" mb="md">
-                    Column: {hoveredSource}
+                    Column: {(hoveredSource ?? lastHoveredSource) as string}
                   </Text>
 
                   {/* Sample Data */}
@@ -334,7 +350,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                     <Text size="xs" fw={500} c="gray.6" tt="uppercase">
                       Sample Values:
                     </Text>
-                    {getPreviewData(hoveredSource)
+                    {getPreviewData((hoveredSource ?? lastHoveredSource) as string)
                       .slice(0, 10)
                       .map((value, index) => (
                         <Box
@@ -352,7 +368,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                         </Box>
                       ))}
 
-                    {getPreviewData(hoveredSource).length === 0 && (
+                    {getPreviewData((hoveredSource ?? lastHoveredSource) as string).length === 0 && (
                       <Text
                         size="sm"
                         c="gray.5"
@@ -362,13 +378,13 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                       </Text>
                     )}
 
-                    {getPreviewData(hoveredSource).length > 10 && (
+                    {getPreviewData((hoveredSource ?? lastHoveredSource) as string).length > 10 && (
                       <Text
                         size="xs"
                         c="gray.5"
                         style={{ fontStyle: "italic" }}
                       >
-                        ... and {getPreviewData(hoveredSource).length - 10} more
+                        ... and {getPreviewData((hoveredSource ?? lastHoveredSource) as string).length - 10} more
                         rows
                       </Text>
                     )}
