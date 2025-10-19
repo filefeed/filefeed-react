@@ -18,7 +18,10 @@ An embeddable React SDK for data onboarding: import CSV/XLS(X), map columns to y
 npm install @filefeed/react
 ```
 
-That’s it. No additional installs, providers, or CSS imports are required. The SDK bundles its UI runtime and styles. Requires React 17+ in your app.
+That’s it. Requires React 17+ in your app.
+
+- For the drop-in `FilefeedWorkbook` component, no provider is needed.
+- For the portal-based workflow, wrap your app (or part of it) with `FilefeedProvider`.
 
 ## Quick start
 
@@ -286,6 +289,74 @@ export default function App() {
   ) : null;
 }
 ```
+
+## Portal-based import (Provider + Sheet + hooks)
+
+```tsx
+import React from "react";
+import {
+  FilefeedProvider,
+  FilefeedSheet,
+  useFilefeed,
+  useFilefeedEvent,
+  type Filefeed,
+} from "@filefeed/react";
+
+const sheet: Filefeed.SheetConfig = {
+  name: "Customers",
+  slug: "customers",
+  fields: [
+    { key: "firstName", type: "string", label: "First Name", required: true },
+    { key: "lastName", type: "string", label: "Last Name", required: true },
+    { key: "email", type: "email", label: "Email", required: true, unique: true },
+    { key: "color", type: "string", label: "Color" },
+  ],
+};
+
+function ImportButton() {
+  const { open, openPortal, closePortal } = useFilefeed();
+
+  // Auto-close portal when workbook completes
+  useFilefeedEvent(
+    "workbook:complete",
+    { operation: `sheetSubmitAction-${sheet.slug}`, status: "complete" },
+    () => closePortal()
+  );
+
+  return (
+    <button onClick={() => (open ? closePortal() : openPortal())}>
+      {open ? "Close" : "Open"} Import
+    </button>
+  );
+}
+
+export function Example() {
+  return (
+    <FilefeedProvider>
+      <ImportButton />
+      <FilefeedSheet
+        config={sheet}
+        onSubmit={async ({ rows, slug }) => {
+          console.log("Submitted rows", { rows, slug });
+        }}
+        onRecordHook={(record) => {
+          record.set("lastName", "Rock");
+          return record;
+        }}
+      />
+    </FilefeedProvider>
+  );
+}
+```
+
+### Events for the portal API
+Emitted via the internal event bus and consumable with `useFilefeedEvent`:
+- "step:change": `{ step, slug }`
+- "workbook:complete": `{ operation: string, status: "complete", slug, rows }`
+- "portal:open": `{}`
+- "portal:close": `{}`
+
+`onRecordHook(record)` allows you to read/write fields per row before submit.
 
 ## Behavior notes
 
