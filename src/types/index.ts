@@ -12,6 +12,8 @@ export interface CreateWorkbookConfig {
   // Optional registries that can be provided by consumers
   transformRegistry?: TransformRegistry;
   validationRegistry?: ValidationRegistry;
+  // Processing behavior configuration
+  processing?: ProcessingOptions;
 }
 
 export interface SheetConfig {
@@ -55,6 +57,14 @@ export interface Action {
 
 export interface WorkbookSettings {
   trackChanges?: boolean;
+}
+
+// Controls how client-side processing runs
+export interface ProcessingOptions {
+  // Number of rows to process per batch during mapping/validation
+  chunkSize?: number;
+  // If true, UI will prefer submitting in chunks when possible
+  submitInChunks?: boolean;
 }
 
 // Additional types for internal SDK functionality
@@ -132,6 +142,8 @@ export interface WorkbookState {
   pipelineMappings?: PipelineMappings;
   transformRegistry?: TransformRegistry;
   validationRegistry?: ValidationRegistry;
+  // 0..1 progress for background processing
+  processingProgress?: number;
 }
 
 // Event types for SDK callbacks
@@ -141,6 +153,14 @@ export interface FilefeedEvents {
   onValidationComplete?: (errors: ValidationError[]) => void;
   onActionTriggered?: (action: Action, data: DataRow[]) => void;
   onWorkbookComplete?: (data: DataRow[]) => void;
+  // Optional: called when submitting via chunks
+  onSubmitChunk?: (args: {
+    rows: DataRow[];
+    chunkIndex: number;
+    totalChunks: number;
+  }) => void | Promise<void>;
+  onSubmitStart?: () => void;
+  onSubmitComplete?: () => void;
   onStepChange?: (step: "import" | "mapping" | "review") => void;
   onReset?: () => void;
 }

@@ -9,6 +9,7 @@ export type { Filefeed } from "./types/filefeedTypes";
 // Type exports
 export type {
   CreateWorkbookConfig,
+  ProcessingOptions,
   SheetConfig,
   FieldConfig,
   ValidationRule,

@@ -8,13 +8,15 @@ import { Providers } from "../app/providers";
 
 // Use existing primitives from this package
 import FilefeedWorkbook from "./FilefeedWorkbook";
-import type { CreateWorkbookConfig } from "../types";
+import type { CreateWorkbookConfig, ProcessingOptions, DataRow } from "../types";
 
 type Props = {
   config: Filefeed.SheetConfig;
   onSubmit?: (sheet: { rows: any[]; slug: string }) => Promise<void> | void;
   onRecordHook?: (record: Filefeed.RecordAPI) => Filefeed.RecordAPI | void;
   autoCloseOnComplete?: boolean;
+  processing?: ProcessingOptions;
+  importOptions?: ProcessingOptions; // alias for processing
 };
 
 function mapField(f: Filefeed.Field) {
@@ -44,7 +46,7 @@ function applyRecordHook(rows: any[], hook?: (r: Filefeed.RecordAPI) => Filefeed
   });
 }
 
-export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnComplete = true }: Props) {
+export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnComplete = true, processing, importOptions }: Props) {
   const { open, portalContainer, closePortal } = useFilefeed();
 
   const wbConfig: CreateWorkbookConfig = {
@@ -56,6 +58,7 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
         fields: config.fields.map(mapField) as any,
       },
     ],
+    processing: processing ?? importOptions,
   };
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -73,12 +76,15 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
 
   // Inner UI to render inside the portal when open
   const inner = (
-    <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}>
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
+    >
       <Providers>
         <div style={{ position: "relative", width: "90%", maxWidth: 1200, background: "#fff", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.2)", overflow: "hidden" }}>
           <ActionIcon
             aria-label="Close importer"
-            onClick={() => setConfirmOpen(true)}
+            onClick={(e) => { e.stopPropagation(); setConfirmOpen(true); }}
             variant="default"
             size="sm"
             style={{ position: "absolute", top: 8, right: 8, zIndex: 10005 }}
@@ -88,28 +94,46 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
           <FilefeedWorkbook
             config={wbConfig}
             events={{
-            onStepChange: (step: any) => {
-              eventBus.emit("step:change", { step, slug: config.slug });
-            },
-            onWorkbookComplete: (rows: any[]) => {
-              const normalized = Array.isArray(rows)
-                ? rows.map((r) => (r && typeof r === "object" && "data" in r ? (r as any).data : r))
-                : [];
-              const transformed = applyRecordHook(normalized, onRecordHook);
-              eventBus.emit("workbook:complete", {
-                operation: `sheetSubmitAction-${config.slug}`,
-                status: "complete",
-                slug: config.slug,
-                rows: transformed,
-              });
-              onSubmit?.({ rows: transformed, slug: config.slug });
-              if (autoCloseOnComplete) {
-                closePortal();
-              }
-            },
-            onReset: () => {
-              eventBus.emit("workbook:reset", { slug: config.slug });
-            },
+              onStepChange: (step: any) => {
+                eventBus.emit("step:change", { step, slug: config.slug });
+              },
+              // Default single-shot submit path
+              onWorkbookComplete: (rows: any[]) => {
+                const normalized = Array.isArray(rows)
+                  ? rows.map((r) => (r && typeof r === "object" && "data" in r ? (r as any).data : r))
+                  : [];
+                const transformed = applyRecordHook(normalized, onRecordHook);
+                eventBus.emit("workbook:complete", {
+                  operation: `sheetSubmitAction-${config.slug}`,
+                  status: "complete",
+                  slug: config.slug,
+                  rows: transformed,
+                });
+                onSubmit?.({ rows: transformed, slug: config.slug });
+                if (autoCloseOnComplete) {
+                  closePortal();
+                }
+              },
+              // Chunked submit path (optional)
+              onSubmitStart: () => {
+                eventBus.emit("workbook:submit:start", { slug: config.slug });
+              },
+              onSubmitChunk: async ({ rows }: { rows: DataRow[]; chunkIndex: number; totalChunks: number }) => {
+                const normalized = Array.isArray(rows)
+                  ? rows.map((r) => (r && typeof r === "object" && "data" in r ? (r as any).data : r))
+                  : [];
+                const transformed = applyRecordHook(normalized, onRecordHook);
+                await onSubmit?.({ rows: transformed, slug: config.slug });
+              },
+              onSubmitComplete: () => {
+                eventBus.emit("workbook:submit:complete", { slug: config.slug });
+                if (autoCloseOnComplete) {
+                  closePortal();
+                }
+              },
+              onReset: () => {
+                eventBus.emit("workbook:reset", { slug: config.slug });
+              },
             }}
           />
           <Modal
@@ -124,10 +148,10 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
               Are you sure you want to close the importer? Unsaved changes will be lost.
             </Text>
             <Group justify="flex-end" gap="sm">
-              <Button variant="default" onClick={() => setConfirmOpen(false)}>
+              <Button variant="default" onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); }}>
                 Cancel
               </Button>
-              <Button color="red" onClick={() => { setConfirmOpen(false); closePortal(); }}>
+              <Button color="red" onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); closePortal(); }}>
                 Close importer
               </Button>
             </Group>

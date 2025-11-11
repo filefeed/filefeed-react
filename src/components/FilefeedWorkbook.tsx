@@ -52,6 +52,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       updateMapping,
       processedData,
       isLoading,
+      processingProgress,
       setLoading,
       pipelineMappings,
       setFieldMappings,
@@ -64,6 +65,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       deleteRow,
       deleteInvalidRows,
       processOnContinue,
+      cancelProcessing,
       reset: resetStore,
     } = useWorkbookStore();
 
@@ -118,7 +120,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       [config, resetStore, setConfig, events]
     );
 
-    const { isUploading, triggerFilePicker } = useFileImport({
+    const { isUploading, triggerFilePicker, handleFile } = useFileImport({
       currentSheet: currentSheet || "",
       pipelineMappings,
       config,
@@ -217,13 +219,37 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
     };
 
     const hasManualRows = totalRows > 0;
+    const [isDragging, setIsDragging] = useState(false);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+      const submitInChunks = Boolean(config?.processing?.submitInChunks);
+      const chunkSize =
+        (config?.processing?.chunkSize && config.processing.chunkSize > 0
+          ? config.processing.chunkSize
+          : 2000) || 2000;
+
+      const submitChunks = async (rows: DataRow[]) => {
+        if (!rows || rows.length === 0) return;
+        if (!submitInChunks || !events?.onSubmitChunk) {
+          events?.onWorkbookComplete?.(rows);
+          return;
+        }
+        const totalChunks = Math.ceil(rows.length / chunkSize);
+        events?.onSubmitStart?.();
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          await events.onSubmitChunk({ rows: chunk, chunkIndex: Math.floor(i / chunkSize), totalChunks });
+          // Yield to keep UI responsive between chunks
+          await new Promise((r) => setTimeout(r, 0));
+        }
+        events?.onSubmitComplete?.();
+      };
+
       if (isManualEntryMode && hasManualRows) {
         const manualRows = buildManualProcessedData();
-        events?.onWorkbookComplete?.(manualRows);
+        await submitChunks(manualRows);
       } else {
-        events?.onWorkbookComplete?.(processedData);
+        await submitChunks(processedData);
       }
     };
 
@@ -275,13 +301,21 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       [mappingState]
     );
 
+    // Determine if current dataset should run chunked to avoid blocking UI
+    const isChunkingPlanned = Boolean(
+      config?.processing?.chunkSize && config.processing.chunkSize > 0
+    );
+
+    const percent = Math.max(0, Math.min(100, Math.round((processingProgress || 0) * 100)));
+    const showCountLoader = isLoading && isChunkingPlanned;
+
     return (
       <Providers>
         <div
           className={`filefeed-workbook ${className || ""}`}
           data-theme={theme}
         >
-          <LoadingOverlay visible={isLoading} />
+          <LoadingOverlay visible={isLoading && !(activeTab === "review" && isChunkingPlanned)} />
 
           <Container size="xl" py="xl">
             {activeTab === "mapping" && importedData && currentSheetConfig ? (
@@ -294,7 +328,15 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                   importedData={importedData}
                   onBack={hardResetToImport}
                   onContinue={async () => {
-                    await processOnContinue();
+                    const useChunk = Boolean(
+                      config?.processing?.chunkSize && config.processing.chunkSize > 0
+                    );
+                    if (useChunk) {
+                      // Kick off chunked processing but don't block UI
+                      void processOnContinue();
+                    } else {
+                      await processOnContinue();
+                    }
                     setActiveTab("review");
                   }}
                   onExit={hardResetToImport}
@@ -338,7 +380,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                     <Button
                       variant="outline"
                       size="xs"
-                      onClick={() => setActiveTab("mapping")}
+                      onClick={() => {
+                        cancelProcessing();
+                        setProcessedRows([]);
+                        setActiveTab("mapping");
+                        setEditingRowId(null);
+                      }}
                       styles={{
                         root: {
                           backgroundColor: "white",
@@ -356,15 +403,25 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                       size="xs"
                       radius="md"
                       onClick={() => {
-                        events?.onWorkbookComplete?.(processedData);
+                        handleSubmit();
                       }}
+                      disabled={isLoading}
                       styles={{
                         root: {
-                          backgroundColor: "black",
+                          backgroundColor: isLoading ? "var(--mantine-color-gray-4)" : "black",
                           color: "white",
                           border: "none",
+                          opacity: isLoading ? 0.7 : 1,
                           "&:hover": {
                             backgroundColor: "#333",
+                          },
+                          "&:disabled": {
+                            backgroundColor: "var(--mantine-color-gray-4)",
+                            color: "var(--mantine-color-gray-6)",
+                            border: "none",
+                            cursor: "not-allowed",
+                            boxShadow: "none",
+                            textDecoration: "none",
                           },
                         },
                       }}
@@ -409,27 +466,60 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                           }}
                         >
                           <span>{item.label}</span>
-                          {item.count > 0 && (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                minWidth: "20px",
-                                height: "20px",
-                                borderRadius: "10px",
-                                backgroundColor: "var(--mantine-color-gray-4)",
-                                color: "white",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {item.count}
-                            </div>
-                          )}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "flex-end",
+                              width: "60px",
+                              height: "20px",
+                              borderRadius: 4,
+                              backgroundColor: "var(--mantine-color-gray-0)",
+                              border: "1px solid var(--mantine-color-gray-3)",
+                              color: "var(--mantine-color-gray-7)",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              fontVariantNumeric: "tabular-nums",
+                              letterSpacing: 0,
+                              padding: "0 6px",
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            {showCountLoader ? (
+                              <div
+                                style={{
+                                  position: "relative",
+                                  width: "100%",
+                                  height: 8,
+                                  borderRadius: 9999,
+                                  overflow: "hidden",
+                                  background: "var(--mantine-color-gray-3)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    transform: "translateX(-100%)",
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent)",
+                                    animation: "ff-shimmer 1.2s linear infinite",
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              item.count
+                            )}
+                          </div>
                         </button>
                       ))}
                     </div>
+                    <style>{`
+                      @keyframes ff-shimmer {
+                        0% { transform: translateX(-100%); }
+                        100% { transform: translateX(100%); }
+                      }
+                    `}</style>
                   </Group>
                 </Group>
 
@@ -660,7 +750,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                         size="xs"
                         radius="md"
                         onClick={handleSubmit}
-                        disabled={isManualEntryMode && !hasManualRows}
+                        disabled={(isManualEntryMode && !hasManualRows) || isLoading}
                         styles={{
                           root: {
                             backgroundColor: "black",
@@ -1057,8 +1147,21 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                         position: "absolute",
                         inset: 0,
                         zIndex: 3,
-                        backgroundColor: "rgba(255, 255, 255, 0.02)",
+                        backgroundColor: isDragging ? "var(--mantine-color-gray-0)" : "rgba(255, 255, 255, 0.02)",
                         backdropFilter: "none",
+                        border: isDragging ? "2px dashed var(--mantine-color-gray-6)" : "2px dashed var(--mantine-color-gray-3)",
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDragging(false);
+                        const files = e.dataTransfer?.files;
+                        if (files && files.length > 0) {
+                          void handleFile(files[0]);
+                        }
                       }}
                     >
                       <Stack align="center" gap="sm">
@@ -1125,6 +1228,30 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                 </Box>
               </Card>
             )}
+
+            {isLoading && isChunkingPlanned && (
+              <div
+                style={{
+                  position: "fixed",
+                  left: "50%",
+                  bottom: 24,
+                  transform: "translateX(-50%)",
+                  background: "rgba(0,0,0,0.9)",
+                  color: "white",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  zIndex: 10050,
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+                  width: 240,
+                  textAlign: "center",
+                }}
+              >
+                Processing data… {percent}%
+              </div>
+            )}
+
           </Container>
         </div>
       </Providers>

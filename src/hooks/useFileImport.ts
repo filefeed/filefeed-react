@@ -75,5 +75,5 @@ export function useFileImport({
     input.click();
   };
 
-  return { isUploading, triggerFilePicker } as const;
+  return { isUploading, triggerFilePicker, handleFile } as const;
 }

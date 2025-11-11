@@ -23,8 +23,6 @@ import {
 } from "../utils/dataProcessing";
 
 // Module-level helpers for background processing
-let reprocessTimer: any = null;
-const PROCESS_DEBOUNCE_MS = 400;
 let processingRunId = 0;
 
 interface WorkbookActions {
@@ -46,7 +44,6 @@ interface WorkbookActions {
   // Data processing
   processData: () => void;
   processDataChunked: () => Promise<void>;
-  scheduleChunkedProcessing: () => void;
   processOnContinue: () => Promise<void>;
   cancelProcessing: () => void;
   setProcessedRows: (rows: DataRow[]) => void;
@@ -76,6 +73,7 @@ const initialState: WorkbookState = {
   processedData: [],
   validationErrors: [],
   isLoading: false,
+  processingProgress: 0,
   pipelineMappings: undefined,
   transformRegistry: defaultTransforms,
   validationRegistry: undefined,
@@ -200,9 +198,13 @@ export const useWorkbookStore = create<WorkbookStore>()(
         const vRegistry = state.validationRegistry;
         // cancel previous runs and start a new one
         const runId = ++processingRunId;
-        set({ isLoading: true });
-        const BATCH = 2000;
+        set({ isLoading: true, processingProgress: 0 });
+        const BATCH =
+          state.config?.processing?.chunkSize && state.config.processing.chunkSize > 0
+            ? state.config.processing.chunkSize
+            : 2000;
         const processed: DataRow[] = [];
+        const total = rows.length || 1;
 
         // Map + validate in batches (without uniqueness)
         for (let start = 0; start < rows.length; start += BATCH) {
@@ -282,7 +284,7 @@ export const useWorkbookStore = create<WorkbookStore>()(
           }
           // Emit partial progress and yield to the event loop
           if (runId !== processingRunId) return;
-          set({ processedData: [...processed] });
+          set({ processedData: [...processed], processingProgress: Math.min(1, processed.length / total) });
           await new Promise((r) => setTimeout(r, 0));
         }
 
@@ -319,45 +321,32 @@ export const useWorkbookStore = create<WorkbookStore>()(
         set({
           validationErrors: processed.flatMap((r) => r.errors),
           isLoading: false,
+          processingProgress: 1,
         });
-      },
-
-      // Debounced trigger for chunked processing
-      scheduleChunkedProcessing: () => {
-        const state = get();
-        if (!state.importedData) return;
-        if (reprocessTimer) clearTimeout(reprocessTimer);
-        set({ isLoading: true });
-        reprocessTimer = setTimeout(() => {
-          get().processDataChunked();
-        }, PROCESS_DEBOUNCE_MS) as any;
       },
 
       // Process when user clicks Continue: choose strategy by dataset size
       processOnContinue: async () => {
         const state = get();
         if (!state.importedData) return;
-        const threshold = (get() as any).LARGE_DATA_THRESHOLD || 10000;
-        const count = state.importedData.rows?.length || 0;
-        if (count <= threshold) {
+        const useChunk = Boolean(
+          state.config?.processing?.chunkSize && state.config.processing.chunkSize > 0
+        );
+        if (useChunk) {
+          await get().processDataChunked();
+        } else {
           // Small dataset: run sync processing but still show loader for UX consistency
           set({ isLoading: true });
           await Promise.resolve().then(() => get().processData());
           set({ isLoading: false });
-        } else {
-          await get().processDataChunked();
         }
       },
 
-      // Cancel any in-flight or scheduled processing
+      // Cancel any in-flight processing
       cancelProcessing: () => {
-        if (reprocessTimer) {
-          clearTimeout(reprocessTimer);
-          reprocessTimer = null;
-        }
         // Bump run id so any loop exits
         processingRunId++;
-        set({ isLoading: false });
+        set({ isLoading: false, processingProgress: 0 });
       },
 
       clearImportedData: () => {
