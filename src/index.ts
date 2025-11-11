@@ -6,6 +6,12 @@ export { useFilefeedEvent } from "./hooks/useFilefeedEvent";
 export { FilefeedSheet } from "./components/FilefeedSheet";
 export type { Filefeed } from "./types/filefeedTypes";
 
+// Flatfile compatibility layer (client-side shims)
+export { api } from "./compat/api";
+export { useSpace } from "./compat/useSpace";
+export { FileFeedListener } from "./compat/listener";
+export type { FileFeed } from "./compat/types";
+
 // Type exports
 export type {
   CreateWorkbookConfig,
