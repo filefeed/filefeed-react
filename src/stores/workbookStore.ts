@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import { devtools } from "zustand/middleware";
+import { createStore } from "zustand/vanilla";
+import type { StoreApi } from "zustand/vanilla";
 import {
   WorkbookState,
   CreateWorkbookConfig,
@@ -11,7 +11,6 @@ import {
   TransformRegistry,
 } from "../types";
 import {
-  processImportedData,
   generateAutoMapping,
   processImportedDataWithMappings,
   mappingStateToFieldMappings,
@@ -22,26 +21,21 @@ import {
   applyNamedTransform,
 } from "../utils/dataProcessing";
 
-// Module-level helpers for background processing
 let processingRunId = 0;
 
 interface WorkbookActions {
-  // Configuration
   setConfig: (config: CreateWorkbookConfig) => void;
   setCurrentSheet: (sheetSlug: string) => void;
 
-  // Data import
   setImportedData: (data: ImportedData) => void;
   clearImportedData: () => void;
 
-  // Mapping
   setMapping: (mapping: MappingState) => void;
   updateMapping: (sourceColumn: string, targetField: string | null) => void;
   generateAutoMapping: () => void;
   setFieldMappings: (fieldMappings: FieldMapping[]) => void;
   setTransformRegistry: (registry: TransformRegistry) => void;
 
-  // Data processing
   processData: () => void;
   processDataChunked: () => Promise<void>;
   processOnContinue: () => Promise<void>;
@@ -52,20 +46,17 @@ interface WorkbookActions {
   deleteInvalidRows: () => void;
   addRow: () => void;
 
-  // Loading states
   setLoading: (loading: boolean) => void;
 
-  // Reset
   reset: () => void;
 }
 
-type WorkbookStore = WorkbookState & WorkbookActions;
+export type WorkbookStore = WorkbookState & WorkbookActions;
 
 const initialState: WorkbookState = {
   config: {
     name: "",
     sheets: [],
-    actions: [],
   },
   currentSheet: "",
   importedData: null,
@@ -79,19 +70,16 @@ const initialState: WorkbookState = {
   validationRegistry: undefined,
 };
 
-export const useWorkbookStore = create<WorkbookStore>()(
-  devtools(
-    (set, get) => ({
-      ...initialState,
+export const createWorkbookStore = (): StoreApi<WorkbookStore> =>
+  createStore<WorkbookStore>()((set, get) => ({
+    ...initialState,
 
       setConfig: (config) => {
         set({
           config,
-          // allow consumers to provide custom registries
           transformRegistry: config.transformRegistry || defaultTransforms,
           validationRegistry: config.validationRegistry,
         });
-        // Set first sheet as current if available
         if (config.sheets && config.sheets.length > 0) {
           const first = config.sheets[0];
           set({
@@ -109,7 +97,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
       setCurrentSheet: (sheetSlug) => {
         set({ currentSheet: sheetSlug });
-        // Clear data when switching sheets
         set({
           importedData: null,
           mappingState: {},
@@ -123,14 +110,12 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
       setImportedData: (data) => {
         set({ importedData: data });
-        // Auto-generate mapping when data is imported
         const state = get();
         const currentSheetConfig = state.config.sheets?.find(
           (sheet) => sheet.slug === state.currentSheet
         );
 
         if (currentSheetConfig) {
-          // Prefer backend-compatible pipeline mappings if provided on sheet
           let pipelineMappings = currentSheetConfig.pipelineMappings;
           if (!pipelineMappings) {
             const autoMapping = generateAutoMapping(
@@ -138,9 +123,7 @@ export const useWorkbookStore = create<WorkbookStore>()(
               currentSheetConfig.fields,
               currentSheetConfig.mappingConfidenceThreshold
             );
-            // keep legacy mapping state
             set({ mappingState: autoMapping });
-            // build fieldMappings with default transforms when available
             const fm = mappingStateToFieldMappings(autoMapping).map((m) => {
               const f = currentSheetConfig.fields.find((x) => x.key === m.target);
               return f?.defaultTransform
@@ -151,9 +134,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
               fieldMappings: fm,
             };
           } else {
-            // Keep mappingState in sync for UI components relying on it
-            // IMPORTANT: Restrict seed mappings to headers that actually exist in the uploaded file
-            // and dedupe by target to avoid pre-consuming all targets.
             const filtered = (pipelineMappings.fieldMappings || []).filter(
               (m) => data.headers.includes(m.source)
             );
@@ -182,7 +162,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         }
       },
 
-      // Chunked processing to avoid long main-thread stalls for very large datasets
       processDataChunked: async () => {
         const state = get();
         if (!state.importedData) return;
@@ -196,7 +175,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         const pipeline = state.pipelineMappings;
         const registry = state.transformRegistry || defaultTransforms;
         const vRegistry = state.validationRegistry;
-        // cancel previous runs and start a new one
         const runId = ++processingRunId;
         set({ isLoading: true, processingProgress: 0 });
         const BATCH =
@@ -206,10 +184,8 @@ export const useWorkbookStore = create<WorkbookStore>()(
         const processed: DataRow[] = [];
         const total = rows.length || 1;
 
-        // Map + validate in batches (without uniqueness)
         for (let start = 0; start < rows.length; start += BATCH) {
           if (runId !== processingRunId) {
-            // aborted
             return;
           }
           const end = Math.min(rows.length, start + BATCH);
@@ -282,13 +258,11 @@ export const useWorkbookStore = create<WorkbookStore>()(
                 errors.filter((e) => e.severity === "error").length === 0,
             });
           }
-          // Emit partial progress and yield to the event loop
           if (runId !== processingRunId) return;
           set({ processedData: [...processed], processingProgress: Math.min(1, processed.length / total) });
           await new Promise((r) => setTimeout(r, 0));
         }
 
-        // Uniqueness validation pass
         if (runId !== processingRunId) return;
         const uniqueFields = fields.filter((f) => f.unique);
         for (const f of uniqueFields) {
@@ -325,7 +299,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         });
       },
 
-      // Process when user clicks Continue: choose strategy by dataset size
       processOnContinue: async () => {
         const state = get();
         if (!state.importedData) return;
@@ -335,7 +308,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         if (useChunk) {
           await get().processDataChunked();
         } else {
-          // Small dataset: run sync processing but still show loader for UX consistency
           set({ isLoading: true });
           await Promise.resolve().then(() => get().processData());
           set({ isLoading: false });
@@ -365,19 +337,16 @@ export const useWorkbookStore = create<WorkbookStore>()(
             fieldMappings: mappingStateToFieldMappings(mapping),
           },
         });
-        // Never auto-process on mapping change; user will click Continue
         get().cancelProcessing();
         set({ processedData: [], validationErrors: [] });
       },
 
-      // Update a single mapping entry and enforce unique targets (last win)
       updateMapping: (sourceColumn, targetField) => {
         const state = get();
         const currentSheetConfig = state.config.sheets?.find(
           (s) => s.slug === state.currentSheet
         );
         const newMapping: MappingState = { ...state.mappingState };
-        // Enforce uniqueness: only one source can map to a target
         if (targetField) {
           for (const [src, tgt] of Object.entries(newMapping)) {
             if (src !== sourceColumn && tgt === targetField) newMapping[src] = null;
@@ -385,7 +354,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         }
         newMapping[sourceColumn] = targetField;
 
-        // Preserve transforms and apply default when needed
         const existing = state.pipelineMappings?.fieldMappings || [];
         let next: FieldMapping[] = existing.filter((m) => m.source !== sourceColumn);
         if (targetField) {
@@ -409,10 +377,8 @@ export const useWorkbookStore = create<WorkbookStore>()(
         set({ processedData: [], validationErrors: [] });
       },
 
-      // Set full FieldMapping[] (advanced mapping UI)
       setFieldMappings: (fieldMappings) => {
         const state = get();
-        // Enforce uniqueness by target: last mapping wins, preserve transform
         const byTarget = new Map<string, FieldMapping>();
         for (const m of fieldMappings || []) {
           if (!m.target) continue;
@@ -424,17 +390,14 @@ export const useWorkbookStore = create<WorkbookStore>()(
             ...(state.pipelineMappings || {}),
             fieldMappings: compacted,
           },
-          // keep legacy mappingState synchronized for components relying on it
           mappingState: fieldMappingsToMappingState(compacted),
         });
-        // Do not auto-process; wait for Continue
         get().cancelProcessing();
         set({ processedData: [], validationErrors: [] });
       },
 
       setTransformRegistry: (registry) => {
         set({ transformRegistry: registry });
-        // Do not auto-process; wait for Continue
         get().cancelProcessing();
         set({ processedData: [], validationErrors: [] });
       },
@@ -512,7 +475,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
           if (row.id === rowId) {
             const newData = { ...row.data, [fieldKey]: value };
 
-            // Re-validate the updated row
             const field = currentSheetConfig.fields.find(
               (f) => f.key === fieldKey
             );
@@ -545,7 +507,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
 
         set({ processedData: updatedData });
 
-        // Update validation errors
         const validationErrors = updatedData.flatMap((row) => row.errors);
         set({ validationErrors });
       },
@@ -557,7 +518,6 @@ export const useWorkbookStore = create<WorkbookStore>()(
         );
         set({ processedData: updatedData });
 
-        // Update validation errors
         const validationErrors = updatedData.flatMap((row) => row.errors);
         set({ validationErrors });
       },
@@ -590,9 +550,4 @@ export const useWorkbookStore = create<WorkbookStore>()(
       reset: () => {
         set(initialState);
       },
-    }),
-    {
-      name: "filefeed-workbook-store",
-    }
-  )
-);
+  }));

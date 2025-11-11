@@ -21,12 +21,14 @@ import {
   Box,
   Flex,
   Table,
-  ScrollArea,
 } from "@mantine/core";
 import { IconUpload, IconEdit } from "@tabler/icons-react";
 import { IconTrash } from "@tabler/icons-react";
 import { FilefeedSDKProps, FilefeedWorkbookRef, DataRow } from "../types";
-import { useWorkbookStore } from "../stores/workbookStore";
+import { createWorkbookStore } from "../stores/workbookStore";
+import type { WorkbookStore } from "../stores/workbookStore";
+import type { StoreApi } from "zustand/vanilla";
+import { useStore } from "zustand";
 import MappingInterface from "./MappingInterface";
 import { Providers } from "../app/providers";
 import { useManualEntry } from "../hooks/useManualEntry";
@@ -34,8 +36,10 @@ import { useDynamicRowCount } from "../hooks/useDynamicRowCount";
 import { useFileImport } from "../hooks/useFileImport";
 import { transformValue, validateFieldWithRegistry, validatePipelineConfig, mappingStateToFieldMappings } from "../utils/dataProcessing";
 
-const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
-  ({ config, events, theme = "light", className }, ref) => {
+type InnerProps = FilefeedSDKProps & { store: StoreApi<WorkbookStore> };
+
+const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
+  ({ config, events, theme = "light", className, store }, ref) => {
     const [activeTab, setActiveTab] = useState<string>("import");
     const [isManualEntryMode, setIsManualEntryMode] = useState(false);
     const [reviewFilter, setReviewFilter] = useState<"all" | "valid" | "invalid">("all");
@@ -67,7 +71,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
       processOnContinue,
       cancelProcessing,
       reset: resetStore,
-    } = useWorkbookStore();
+    } = useStore(store, (s) => s);
 
     const currentSheetConfig = config.sheets?.find(
       (sheet) => sheet.slug === currentSheet
@@ -116,8 +120,11 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           resetManual();
           events?.onReset?.();
         },
+        cancelProcessing: () => {
+          cancelProcessing();
+        },
       }),
-      [config, resetStore, setConfig, events]
+      [config, resetStore, setConfig, events, cancelProcessing, resetManual]
     );
 
     const { isUploading, triggerFilePicker, handleFile } = useFileImport({
@@ -232,6 +239,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         if (!rows || rows.length === 0) return;
         if (!submitInChunks || !events?.onSubmitChunk) {
           events?.onWorkbookComplete?.(rows);
+          // Clean workbook after submit (single-shot)
+          hardResetToImport();
           return;
         }
         const totalChunks = Math.ceil(rows.length / chunkSize);
@@ -243,6 +252,8 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
           await new Promise((r) => setTimeout(r, 0));
         }
         events?.onSubmitComplete?.();
+        // Clean workbook after submit (chunked)
+        hardResetToImport();
       };
 
       if (isManualEntryMode && hasManualRows) {
@@ -314,8 +325,13 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
         <div
           className={`filefeed-workbook ${className || ""}`}
           data-theme={theme}
+          style={{ position: "relative" }}
         >
-          <LoadingOverlay visible={isLoading && !(activeTab === "review" && isChunkingPlanned)} />
+          <LoadingOverlay
+            visible={isLoading && !(activeTab === "review" && isChunkingPlanned)}
+            zIndex={10000}
+            overlayProps={{ opacity: 0.15, blur: 1 }}
+          />
 
           <Container size="xl" py="xl">
             {activeTab === "mapping" && importedData && currentSheetConfig ? (
@@ -555,7 +571,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                             );
                             return (
                               <Table.Th
-                                key={targetField}
+                                key={String(targetField)}
                                 style={{
                                   color: "var(--mantine-color-gray-8)",
                                   fontWeight: 500,
@@ -573,7 +589,7 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
                                   zIndex: 1,
                                 }}
                               >
-                                {field?.label || targetField}
+                                {String(field?.label ?? targetField)}
                               </Table.Th>
                             );
                           })}
@@ -1232,9 +1248,9 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
             {isLoading && isChunkingPlanned && (
               <div
                 style={{
-                  position: "fixed",
+                  position: "absolute",
                   left: "50%",
-                  bottom: 24,
+                  bottom: 16,
                   transform: "translateX(-50%)",
                   background: "rgba(0,0,0,0.9)",
                   color: "white",
@@ -1258,6 +1274,12 @@ const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>(
     );
   }
 );
+
+// Outer wrapper that provides an isolated store per instance
+const FilefeedWorkbook = forwardRef<FilefeedWorkbookRef, FilefeedSDKProps>((props, ref) => {
+  const store = useMemo<StoreApi<WorkbookStore>>(() => createWorkbookStore(), []);
+  return <FilefeedWorkbookInner ref={ref} {...props} store={store} />;
+});
 
 export default FilefeedWorkbook;
 FilefeedWorkbook.displayName = "FilefeedWorkbook";

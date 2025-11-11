@@ -5,11 +5,6 @@ import type {
   DataRow,
   ImportedData,
 } from "../types";
-import {
-  OFFLOAD_THRESHOLD_BYTES,
-  isBackendClientConfigured,
-  offloadAndProcessFile,
-} from "../utils/backendClient";
 
 interface UseFileImportArgs {
   currentSheet: string;
@@ -35,29 +30,12 @@ export function useFileImport({
   const handleFile = async (file: File) => {
     try {
       setIsUploading(true);
-      if (file.size > OFFLOAD_THRESHOLD_BYTES && isBackendClientConfigured()) {
-        setLoading(true);
-        try {
-          const rows = await offloadAndProcessFile(file, {
-            sheetSlug: currentSheet,
-            pipelineMappings,
-            workbook: config,
-          });
-          setProcessedRows(rows);
-          setActiveTab("review");
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        const { parseCSV, parseExcel } = await import("../utils/dataProcessing");
-        const data = file.name.toLowerCase().endsWith(".csv")
-          ? await parseCSV(file)
-          : await parseExcel(file);
-        onImported(data);
-      }
+      const { parseCSV, parseExcel } = await import("../utils/dataProcessing");
+      const data = file.name.toLowerCase().endsWith(".csv")
+        ? await parseCSV(file)
+        : await parseExcel(file);
+      onImported(data);
     } catch (error) {
-      // Surface in console for now; can be wired to onError later
-      // eslint-disable-next-line no-console
       console.error("Error processing file:", error);
     } finally {
       setIsUploading(false);

@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { eventBus } from "../internal/eventBus";
 
 type Ctx = {
   open: boolean;
@@ -29,12 +28,10 @@ export function FilefeedProvider(props: { publishableKey?: string; children: Rea
 
   const openPortal = useCallback(() => {
     setOpen(true);
-    eventBus.emit("portal:open", {});
   }, []);
 
   const closePortal = useCallback(() => {
     setOpen(false);
-    eventBus.emit("portal:close", {});
   }, []);
 
   const value = useMemo<Ctx>(() => ({

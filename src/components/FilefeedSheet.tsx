@@ -1,14 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFilefeed } from "../hooks/useFilefeed";
-import { eventBus } from "../internal/eventBus";
 import type { Filefeed } from "../types/filefeedTypes";
 import { ActionIcon, Modal, Group, Button, Text } from "@mantine/core";
 import { Providers } from "../app/providers";
 
 // Use existing primitives from this package
 import FilefeedWorkbook from "./FilefeedWorkbook";
-import type { CreateWorkbookConfig, ProcessingOptions, DataRow } from "../types";
+import type { CreateWorkbookConfig, ProcessingOptions, DataRow, FilefeedWorkbookRef } from "../types";
 
 type Props = {
   config: Filefeed.SheetConfig;
@@ -48,6 +47,7 @@ function applyRecordHook(rows: any[], hook?: (r: Filefeed.RecordAPI) => Filefeed
 
 export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnComplete = true, processing, importOptions }: Props) {
   const { open, portalContainer, closePortal } = useFilefeed();
+  const wbRef = useRef<FilefeedWorkbookRef | null>(null);
 
   const wbConfig: CreateWorkbookConfig = {
     name: config.name,
@@ -92,32 +92,22 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
             ✕
           </ActionIcon>
           <FilefeedWorkbook
+            ref={wbRef}
             config={wbConfig}
             events={{
-              onStepChange: (step: any) => {
-                eventBus.emit("step:change", { step, slug: config.slug });
-              },
               // Default single-shot submit path
               onWorkbookComplete: (rows: any[]) => {
                 const normalized = Array.isArray(rows)
                   ? rows.map((r) => (r && typeof r === "object" && "data" in r ? (r as any).data : r))
                   : [];
                 const transformed = applyRecordHook(normalized, onRecordHook);
-                eventBus.emit("workbook:complete", {
-                  operation: `sheetSubmitAction-${config.slug}`,
-                  status: "complete",
-                  slug: config.slug,
-                  rows: transformed,
-                });
                 onSubmit?.({ rows: transformed, slug: config.slug });
                 if (autoCloseOnComplete) {
                   closePortal();
                 }
               },
               // Chunked submit path (optional)
-              onSubmitStart: () => {
-                eventBus.emit("workbook:submit:start", { slug: config.slug });
-              },
+              onSubmitStart: () => {},
               onSubmitChunk: async ({ rows }: { rows: DataRow[]; chunkIndex: number; totalChunks: number }) => {
                 const normalized = Array.isArray(rows)
                   ? rows.map((r) => (r && typeof r === "object" && "data" in r ? (r as any).data : r))
@@ -126,14 +116,11 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
                 await onSubmit?.({ rows: transformed, slug: config.slug });
               },
               onSubmitComplete: () => {
-                eventBus.emit("workbook:submit:complete", { slug: config.slug });
                 if (autoCloseOnComplete) {
                   closePortal();
                 }
               },
-              onReset: () => {
-                eventBus.emit("workbook:reset", { slug: config.slug });
-              },
+              onReset: () => {},
             }}
           />
           <Modal
@@ -151,7 +138,7 @@ export function FilefeedSheet({ config, onSubmit, onRecordHook, autoCloseOnCompl
               <Button variant="default" onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); }}>
                 Cancel
               </Button>
-              <Button color="red" onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); closePortal(); }}>
+              <Button color="red" onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); wbRef.current?.cancelProcessing?.(); closePortal(); }}>
                 Close importer
               </Button>
             </Group>
