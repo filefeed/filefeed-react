@@ -4,7 +4,7 @@ Embedded FileFeed is an SDK wrapper that enables you to seamlessly integrate a s
 
 By using embedded FileFeed, you empower your users with a self-serve and guided import process. The importer handles file parsing, validation, and upload—so your team can focus on building instead of managing CSV errors.
 
-If you're looking for alternative integration methods that fit your business needs, explore our [FileFeed Flows](https://docs.filefeed.io/getting-started/quickstart).
+If you're looking for alternative integration methods that fit your business needs, explore our [FileFeed Flows](https://docs.filefeed.io/quickstart).
 
 ## Before you begin
 
