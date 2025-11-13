@@ -1,7 +1,9 @@
 export namespace Filefeed {
+  export type FieldType = "string" | "number" | "email" | "date" | "boolean";
+
   export type Field = {
     key: string;
-    type: string; // "string" | "number" | "email" | ...
+    type: FieldType; // "string" | "number" | "email" | ...
     label?: string;
     required?: boolean;
     unique?: boolean;
@@ -13,12 +15,34 @@ export namespace Filefeed {
     fields: Field[];
   };
 
-  // lightweight Record API mirrored to support onRecordHook ergonomics
   export type RecordAPI = {
     get: (key: string) => any;
     set: (key: string, value: any) => void;
     toObject: () => Record<string, any>;
   };
+
+  type FieldsOf<S> = S extends { fields: readonly (infer A)[] }
+    ? A
+    : S extends { fields: (infer B)[] }
+      ? B
+      : never;
+  type Primitive<T extends FieldType> = T extends "number" ? number : T extends "boolean" ? boolean : string;
+
+  export type RecordFor<S extends { fields: readonly { key: string; type: FieldType }[] }> = {
+    [K in FieldsOf<S> as K["key"]]: Primitive<K["type"]>;
+  };
+
+  export type RecordWithValuesFor<S extends { fields: readonly { key: string; type: FieldType }[] }> = {
+    [K in FieldsOf<S> as K["key"]]: { value?: Primitive<K["type"]> };
+  };
+
+  export type TypedRecordAPI<S extends { fields: readonly { key: string; type: FieldType }[] }> = {
+    get: <K extends keyof RecordFor<S>>(key: K) => RecordFor<S>[K];
+    set: <K extends keyof RecordFor<S>>(key: K, value: RecordFor<S>[K]) => void;
+    toObject: () => RecordFor<S>;
+  };
+
+  export type SubmitHandler<S extends SheetConfig> = (args: { rows: RecordFor<S>[]; slug: string }) => void | Promise<void>;
 }
 
 

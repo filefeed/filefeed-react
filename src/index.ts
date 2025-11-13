@@ -1,6 +1,5 @@
 // Main SDK exports
 export { default as FilefeedWorkbook } from "./components/FilefeedWorkbook";
-export { FilefeedProvider } from "./provider/FilefeedProvider";
 export { useFilefeed } from "./hooks/useFilefeed";
 export { FilefeedSheet } from "./components/FilefeedSheet";
 export type { Filefeed } from "./types/filefeedTypes";
