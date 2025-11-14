@@ -3,6 +3,11 @@ export type GlobalPortalState = {
   portalContainer: HTMLDivElement | null;
 };
 
+export const SERVER_SNAPSHOT: GlobalPortalState = {
+  open: false,
+  portalContainer: null,
+};
+
 let state: GlobalPortalState = {
   open: false,
   portalContainer: null,
@@ -44,6 +49,10 @@ export function closePortal() {
 
 export function getSnapshot(): GlobalPortalState {
   return state;
+}
+
+export function getServerSnapshot(): GlobalPortalState {
+  return SERVER_SNAPSHOT;
 }
 
 export function subscribe(callback: () => void): () => void {

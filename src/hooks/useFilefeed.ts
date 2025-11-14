@@ -5,17 +5,17 @@ import {
   getSnapshot as getGlobalSnapshot,
   openPortal as openGlobalPortal,
   closePortal as closeGlobalPortal,
+  getServerSnapshot as getGlobalServerSnapshot,
 } from "../provider/globalPortal";
 
 export function useFilefeed() {
   const ctx = useContext(FilefeedContext);
   if (ctx) return ctx;
 
-  // Fallback to global portal manager when no Provider is present
   const snapshot = useSyncExternalStore(
     subscribeGlobal,
     getGlobalSnapshot,
-    () => ({ open: false, portalContainer: null })
+    getGlobalServerSnapshot
   );
 
   return {
