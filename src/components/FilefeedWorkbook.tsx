@@ -229,7 +229,6 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
     const [isDragging, setIsDragging] = useState(false);
 
     const handleSubmit = async () => {
-      const submitInChunks = Boolean(config?.processing?.submitInChunks);
       const chunkSize =
         (config?.processing?.chunkSize && config.processing.chunkSize > 0
           ? config.processing.chunkSize
@@ -237,7 +236,7 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
 
       const submitChunks = async (rows: DataRow[]) => {
         if (!rows || rows.length === 0) return;
-        if (!submitInChunks || !events?.onSubmitChunk) {
+        if (!events?.onSubmitChunk) {
           events?.onWorkbookComplete?.(rows);
           // Clean workbook after submit (single-shot)
           hardResetToImport();

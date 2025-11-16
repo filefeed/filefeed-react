@@ -41,7 +41,6 @@ export interface ValidationRule {
 
 export interface ProcessingOptions {
   chunkSize?: number;
-  submitInChunks?: boolean;
 }
 
 export interface ImportedData {
