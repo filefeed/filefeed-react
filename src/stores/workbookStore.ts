@@ -305,11 +305,15 @@ export const createWorkbookStore = (): StoreApi<WorkbookStore> =>
         const useChunk = Boolean(
           state.config?.processing?.chunkSize && state.config.processing.chunkSize > 0
         );
-        if (useChunk) {
-          await get().processDataChunked();
-        } else {
-          set({ isLoading: true });
-          await Promise.resolve().then(() => get().processData());
+        try {
+          if (useChunk) {
+            await get().processDataChunked();
+          } else {
+            set({ isLoading: true });
+            await Promise.resolve().then(() => get().processData());
+            set({ isLoading: false });
+          }
+        } catch (_err) {
           set({ isLoading: false });
         }
       },

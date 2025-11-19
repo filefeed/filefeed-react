@@ -486,6 +486,11 @@ const validateRule = (
 };
 
 // Data transformation utilities
+const excelSerialToDate = (serial: number): Date => {
+  const excelEpoch = Date.UTC(1899, 11, 30);
+  const ms = Math.round(serial * 86400000);
+  return new Date(excelEpoch + ms);
+};
 export const transformValue = (value: any, fieldType: string): any => {
   if (value === null || value === undefined || value === "") {
     return value;
@@ -500,7 +505,21 @@ export const transformValue = (value: any, fieldType: string): any => {
       const str = String(value).toLowerCase();
       return str === "true" || str === "1" || str === "yes";
     case "date":
-      return new Date(value).toISOString();
+      if (value instanceof Date) {
+        return isNaN(value.getTime()) ? value : value.toISOString();
+      }
+      if (typeof value === "number") {
+        const maybeExcel = value > 59 && value < 600000;
+        const d = maybeExcel ? excelSerialToDate(value) : new Date(value);
+        return isNaN(d.getTime()) ? value : d.toISOString();
+      }
+      if (typeof value === "string") {
+        const s = value.trim();
+        if (!s) return null;
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? s : d.toISOString();
+      }
+      return value;
     default:
       return value;
   }
@@ -512,26 +531,34 @@ export const generateAutoMapping = (
   fields: FieldConfig[],
   confidenceThreshold: number = 0.7
 ): Record<string, string | null> => {
+  const headerCandidates = importedHeaders.map((header) => {
+    const candidates = fields
+      .map((field) => {
+        const conf =
+          calculateSimilarity(header.toLowerCase(), field.label.toLowerCase()) ||
+          calculateSimilarity(header.toLowerCase(), field.key.toLowerCase());
+        return { key: field.key, confidence: conf };
+      })
+      .filter((c) => c.confidence > confidenceThreshold)
+      .sort((a, b) => b.confidence - a.confidence);
+    const best = candidates[0]?.confidence || 0;
+    return { header, candidates, best };
+  });
+
+  headerCandidates.sort((a, b) => b.best - a.best);
+
+  const usedTargets = new Set<string>();
   const mapping: Record<string, string | null> = {};
 
-  importedHeaders.forEach((header) => {
-    let bestMatch: { field: string; confidence: number } | null = null;
-
-    fields.forEach((field) => {
-      const confidence =
-        calculateSimilarity(header.toLowerCase(), field.label.toLowerCase()) ||
-        calculateSimilarity(header.toLowerCase(), field.key.toLowerCase());
-
-      if (
-        confidence > confidenceThreshold &&
-        (!bestMatch || confidence > bestMatch.confidence)
-      ) {
-        bestMatch = { field: field.key, confidence };
-      }
-    });
-
-    mapping[header] = bestMatch ? bestMatch.field : null;
-  });
+  for (const item of headerCandidates) {
+    const pick = item.candidates.find((c) => !usedTargets.has(c.key));
+    if (pick) {
+      mapping[item.header] = pick.key;
+      usedTargets.add(pick.key);
+    } else {
+      mapping[item.header] = null;
+    }
+  }
 
   return mapping;
 };

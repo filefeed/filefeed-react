@@ -14,8 +14,10 @@ import {
   Paper,
   ThemeIcon,
   ScrollArea,
+  Alert,
+  Tooltip,
 } from "@mantine/core";
-import { IconArrowRight, IconFileText } from "@tabler/icons-react";
+import { IconArrowRight, IconFileText, IconAlertCircle } from "@tabler/icons-react";
 import { MappingInterfaceProps, FieldMapping } from "../types";
 import {
   fieldMappingsToMappingState,
@@ -131,6 +133,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   const availableTargets = fields.filter(
     (field) => !usedTargets.includes(field.key)
   );
+  const missingRequired = fields.filter((f) => f.required && !usedTargets.includes(f.key));
 
   return (
     <Box style={{ padding: "16px", minHeight: "600px" }}>
@@ -140,37 +143,18 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
           <Text size="lg" fw={600} c="gray.8">
             Column Mapping
           </Text>
-          <Badge
-            variant="outline"
-            size="sm"
-            styles={{
-              root: {
-                backgroundColor: "white",
-                borderColor: "black",
-                color: "black",
-              },
-            }}
-          >
+          <Badge variant="light" color="gray" size="sm">
             {mappedCount}/{destinationFieldsCount} mapped
           </Badge>
+          {missingRequired.length > 0 && (
+            <Badge variant="light" color="red" size="sm">
+              Required missing: {missingRequired.length}
+            </Badge>
+          )}
         </Group>
 
         <Group gap="xs">
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={onBack}
-            styles={{
-              root: {
-                backgroundColor: "white",
-                borderColor: "black",
-                color: "black",
-                "&:hover": {
-                  backgroundColor: "var(--mantine-color-gray-0)",
-                },
-              },
-            }}
-          >
+          <Button variant="default" size="xs" onClick={onBack}>
             Back
           </Button>
           {isProcessing && (
@@ -178,29 +162,53 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
               Processing...
             </Badge>
           )}
-          <Button
-            size="xs"
-            disabled={!canContinue}
-            onClick={onContinue}
-            styles={{
-              root: {
-                backgroundColor: "black",
-                color: "white",
-                border: "none",
-                "&:hover": {
-                  backgroundColor: "#333",
-                },
-                "&:disabled": {
-                  backgroundColor: "var(--mantine-color-gray-4)",
-                  color: "var(--mantine-color-gray-6)",
-                },
-              },
-            }}
+          <Tooltip
+            label={`Map required fields${missingRequired.length ? ": " + missingRequired.slice(0, 4).map((f) => f.label || f.key).join(", ") + (missingRequired.length > 4 ? ` +${missingRequired.length - 4} more` : "") : ""}`}
+            disabled={canContinue}
+            withArrow
+            position="bottom-end"
+            zIndex={10050}
           >
-            Continue
-          </Button>
+            <div>
+              <Button size="xs" radius="md" variant="filled" color="dark" disabled={!canContinue} onClick={onContinue}>
+                Continue
+              </Button>
+            </div>
+          </Tooltip>
         </Group>
       </Flex>
+
+      {!canContinue && missingRequired.length > 0 && (
+        <Alert
+          color="red"
+          variant="light"
+          radius="md"
+          icon={<IconAlertCircle size={16} />}
+          styles={{
+            root: {
+              backgroundColor: "var(--mantine-color-red-0)",
+              borderColor: "var(--mantine-color-red-6)",
+            },
+            message: { color: "var(--mantine-color-red-9)" },
+          }}
+          mt="xs"
+          mb="sm"
+        >
+          <Text size="sm" fw={600} c="red.9">
+            Missing required fields
+          </Text>
+          <Group gap="xs" mt="xs" wrap="wrap">
+            {missingRequired.map((f) => (
+              <Badge key={f.key} variant="light" color="red" size="xs">
+                {f.label || f.key}
+              </Badge>
+            ))}
+          </Group>
+          <Text size="xs" c="gray.7" mt="xs">
+            Map these fields to continue
+          </Text>
+        </Alert>
+      )}
 
       {/* Main Mapping Interface - Two Column Layout */}
       <Flex gap="md" style={{ minHeight: "500px" }}>
@@ -261,9 +269,9 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                                 : undefined;
                               const options = [
                                 ...(currentTarget
-                                  ? [{ value: currentTarget.key, label: currentTarget.label }]
+                                  ? [{ value: currentTarget.key, label: `${currentTarget.label}${currentTarget.required ? " *" : ""}` }]
                                   : []),
-                                ...availableTargets.map((f) => ({ value: f.key, label: f.label })),
+                                ...availableTargets.map((f) => ({ value: f.key, label: `${f.label}${f.required ? " *" : ""}` })),
                               ];
                               // de-duplicate by value while preserving order
                               return options.filter((opt, idx, arr) =>
