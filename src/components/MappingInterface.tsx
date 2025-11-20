@@ -6,7 +6,6 @@ import {
   Group,
   Text,
   Select,
-  Badge,
   Stack,
   Button,
   Box,
@@ -14,8 +13,9 @@ import {
   Paper,
   ThemeIcon,
   ScrollArea,
-  Alert,
-  Tooltip,
+  Modal,
+  List,
+  Loader,
 } from "@mantine/core";
 import { IconArrowRight, IconFileText, IconAlertCircle } from "@tabler/icons-react";
 import { MappingInterfaceProps, FieldMapping } from "../types";
@@ -45,6 +45,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [draggedSource, setDraggedSource] = useState<string | null>(null);
   const [lastHoveredSource, setLastHoveredSource] = useState<string | null>(null);
+  const [missingModalOpen, setMissingModalOpen] = useState(false);
 
   const handleMappingUpdate = (
     sourceColumn: string,
@@ -143,14 +144,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
           <Text size="lg" fw={600} c="gray.8">
             Column Mapping
           </Text>
-          <Badge variant="light" color="gray" size="sm">
-            {mappedCount}/{destinationFieldsCount} mapped
-          </Badge>
-          {missingRequired.length > 0 && (
-            <Badge variant="light" color="red" size="sm">
-              Required missing: {missingRequired.length}
-            </Badge>
-          )}
+          <Text size="sm" c="gray.6">Mapped {mappedCount}/{destinationFieldsCount}</Text>
         </Group>
 
         <Group gap="xs">
@@ -158,57 +152,69 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
             Back
           </Button>
           {isProcessing && (
-            <Badge variant="light" color="gray" size="sm">
-              Processing...
-            </Badge>
+            <Group gap="xs">
+              <Loader size="xs" color="gray" />
+              <Text size="xs" c="gray.6">Processing...</Text>
+            </Group>
           )}
-          <Tooltip
-            label={`Map required fields${missingRequired.length ? ": " + missingRequired.slice(0, 4).map((f) => f.label || f.key).join(", ") + (missingRequired.length > 4 ? ` +${missingRequired.length - 4} more` : "") : ""}`}
-            disabled={canContinue}
-            withArrow
-            position="bottom-end"
-            zIndex={10050}
+          <Button
+            size="xs"
+            radius="md"
+            variant="filled"
+            color="dark"
+            disabled={isProcessing}
+            onClick={() => {
+              if (canContinue) onContinue();
+              else setMissingModalOpen(true);
+            }}
           >
-            <div>
-              <Button size="xs" radius="md" variant="filled" color="dark" disabled={!canContinue} onClick={onContinue}>
-                Continue
-              </Button>
-            </div>
-          </Tooltip>
+            Continue
+          </Button>
         </Group>
       </Flex>
 
-      {!canContinue && missingRequired.length > 0 && (
-        <Alert
-          color="red"
-          variant="light"
-          radius="md"
-          icon={<IconAlertCircle size={16} />}
-          styles={{
-            root: {
-              backgroundColor: "var(--mantine-color-red-0)",
-              borderColor: "var(--mantine-color-red-6)",
-            },
-            message: { color: "var(--mantine-color-red-9)" },
-          }}
-          mt="xs"
-          mb="sm"
-        >
-          <Text size="sm" fw={600} c="red.9">
-            Missing required fields
-          </Text>
-          <Group gap="xs" mt="xs" wrap="wrap">
-            {missingRequired.map((f) => (
-              <Badge key={f.key} variant="light" color="red" size="xs">
-                {f.label || f.key}
-              </Badge>
-            ))}
+      <Modal
+        opened={missingModalOpen}
+        onClose={() => setMissingModalOpen(false)}
+        title={
+          <Group gap="xs">
+            <ThemeIcon color="red" variant="light" radius="xl" size="sm">
+              <IconAlertCircle size={14} />
+            </ThemeIcon>
+            <Text size="sm" fw={600}>Missing required fields</Text>
           </Group>
-          <Text size="xs" c="gray.7" mt="xs">
-            Map these fields to continue
-          </Text>
-        </Alert>
-      )}
+        }
+        centered
+        zIndex={10050}
+        overlayProps={{ opacity: 0.45, blur: 2 }}
+      >
+        <Text size="sm" c="gray.7" mb="xs">
+          Map these fields to continue.
+        </Text>
+        <Paper withBorder radius="md" p="xs">
+          <ScrollArea style={{ maxHeight: 180 }}>
+            <List
+              spacing="xs"
+              icon={
+                <ThemeIcon color="red" variant="light" radius="xl" size="sm">
+                  <IconAlertCircle size={12} />
+                </ThemeIcon>
+              }
+            >
+              {missingRequired.map((f) => (
+                <List.Item key={f.key}>
+                  <Text size="sm" c="gray.8">{f.label || f.key}</Text>
+                </List.Item>
+              ))}
+            </List>
+          </ScrollArea>
+        </Paper>
+        <Group justify="flex-end" mt="sm">
+          <Button size="xs" color="red" onClick={() => setMissingModalOpen(false)}>
+            Got it
+          </Button>
+        </Group>
+      </Modal>
 
       {/* Main Mapping Interface - Two Column Layout */}
       <Flex gap="md" style={{ minHeight: "500px" }}>
@@ -258,11 +264,13 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
                         {/* Right side - Destination field (50%) */}
                         <Box style={{ flex: 1, display: "flex", gap: 8 }}>
                           <Select
+                            key={`${header}:${mappedField || 'none'}`}
                             placeholder="Select field"
-                            value={mappedField}
-                            onChange={(value) =>
-                              handleMappingUpdate(header, value)
-                            }
+                            value={mappedField || null}
+                            onChange={(value) => {
+                              const v = value ?? null;
+                              handleMappingUpdate(header, v);
+                            }}
                             data={(() => {
                               const currentTarget = mappedField
                                 ? fields.find((f) => f.key === mappedField)
