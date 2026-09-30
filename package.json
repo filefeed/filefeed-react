@@ -1,6 +1,6 @@
 {
   "name": "@filefeed/react",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "A powerful data onboarding SDK for importing, mapping, validating, and transforming structured data",
   "main": "dist/client.js",
   "module": "dist/client.esm.js",
@@ -18,7 +18,9 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": ["**/*.css"],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",

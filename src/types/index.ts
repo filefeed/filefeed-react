@@ -78,6 +78,15 @@ export interface ProcessingOptions {
   autoDetectMetadataRow?: boolean;
   skipRows?: number[];
   dateOutputFormat?: string;
+  /**
+   * When true the user can continue from the mapping step even if some
+   * required target fields have no source column. Processing still runs
+   * validation, so every row gets one error per unmapped required field
+   * ("External ID is required and your file has no column for it") and the
+   * review step shows those rows as invalid. Default false: Continue stays
+   * blocked until every required field is mapped.
+   */
+  allowUnmappedRequired?: boolean;
 }
 
 export interface MetadataRowInfo {
@@ -201,6 +210,17 @@ export interface MappingInterfaceProps {
   canContinue?: boolean;
   /** Blocks Continue and relabels it while the AI column mapping is still running. */
   aiMappingPending?: boolean;
+  /**
+   * Mirrors `ProcessingOptions.allowUnmappedRequired`. Only changes the copy of
+   * the inline notice about required fields that are not in the file; the
+   * gating itself comes through `canContinue`.
+   */
+  allowUnmappedRequired?: boolean;
+  /**
+   * Source columns whose current target was set by the AI column mapping.
+   * Used for the small confidence dot next to the target select.
+   */
+  aiMappedSources?: string[];
 }
 
 export interface FilefeedWorkbookRef {

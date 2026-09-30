@@ -126,6 +126,30 @@ describe("workbookStore", () => {
     expect(state.pipelineMappings?.fieldMappings).toHaveLength(2);
   });
 
+  it("processOnContinue flags every row when a required field has no source column", async () => {
+    const store = createWorkbookStore();
+    store.getState().setConfig({
+      ...testConfig,
+      processing: { allowUnmappedRequired: true },
+    });
+    store.getState().setImportedData({
+      headers: ["Years"],
+      rows: [{ Years: "30" }, { Years: "41" }],
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    store.getState().setMappingBatch({ Years: "age" });
+    await store.getState().processOnContinue();
+    const { processedData, validationErrors } = store.getState();
+    expect(processedData).toHaveLength(2);
+    for (const row of processedData) {
+      expect(row.isValid).toBe(false);
+      const nameErrors = row.errors.filter((e) => e.field === "name");
+      expect(nameErrors).toHaveLength(1);
+      expect(nameErrors[0].message).toBe("Name is required and your file has no column for it");
+    }
+    expect(validationErrors.filter((e) => e.field === "name")).toHaveLength(2);
+  });
+
   it("setAiMappingPending toggles the flag and reset/clearImportedData clear it", () => {
     const store = createWorkbookStore();
     expect(store.getState().aiMappingPending).toBe(false);
