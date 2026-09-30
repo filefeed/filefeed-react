@@ -45,6 +45,7 @@ import {
   mappingStateToFieldMappings,
   collectHeaderSamples,
   applyAiColumnMappings,
+  AI_COLUMN_CONFIDENCE_THRESHOLD,
 } from "../utils/dataProcessing";
 import type { AiColumnSuggestion } from "../utils/dataProcessing";
 
@@ -242,6 +243,12 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
     const aiColumnEndpoint = config?.aiColumnSuggestEndpoint;
     const aiColumnAttemptedRef = useRef<string | null>(null);
     const aiInflightRef = useRef<{ sig: string; controller: AbortController } | null>(null);
+    // Source columns whose target came from a confident AI reply. Drives the
+    // small confidence dot in the mapping table; cleared on every new import.
+    const [aiMappedSources, setAiMappedSources] = useState<string[]>([]);
+    useEffect(() => {
+      setAiMappedSources([]);
+    }, [importedData]);
 
     const finishAiMapping = useCallback(
       (sig: string) => {
@@ -317,6 +324,19 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
           for (const h of headers) local[h] = base[h] ?? null;
           const next = applyAiColumnMappings(headers, local, data.mappings, fieldKeys);
           setMappingBatch(next);
+          setAiMappedSources(
+            data.mappings
+              .filter(
+                (s) =>
+                  s &&
+                  typeof s.source === "string" &&
+                  s.target &&
+                  typeof s.confidence === "number" &&
+                  s.confidence >= AI_COLUMN_CONFIDENCE_THRESHOLD &&
+                  next[s.source] === s.target
+              )
+              .map((s) => s.source)
+          );
           eventsRef.current?.onMappingChanged?.(next);
         } catch (err) {
           if (!controller.signal.aborted && typeof console !== "undefined") {
@@ -338,8 +358,15 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
       []
     );
 
+    const allowUnmappedRequired = Boolean(
+      config?.processing?.allowUnmappedRequired
+    );
+
     const canProceedToReview = useMemo(() => {
       if (!currentSheetConfig) return false;
+      // Opt-in: unmapped required fields become per-row validation errors
+      // during processing instead of blocking the mapping step.
+      if (allowUnmappedRequired) return true;
       const pipeline = pipelineMappings || {
         fieldMappings: mappingStateToFieldMappings(mappingState),
       };
@@ -354,7 +381,7 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
       return !cfgErrors.some((e) =>
         e.toLowerCase().includes("missing mapping for required field")
       );
-    }, [currentSheetConfig, pipelineMappings, mappingState, transformRegistry]);
+    }, [currentSheetConfig, pipelineMappings, mappingState, transformRegistry, allowUnmappedRequired]);
 
     const isChunkingPlanned = Boolean(
       config?.processing?.chunkSize && config.processing.chunkSize > 0
@@ -455,6 +482,8 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
                 isProcessing={isLoading}
                 canContinue={canProceedToReview}
                 aiMappingPending={aiMappingPending}
+                allowUnmappedRequired={allowUnmappedRequired}
+                aiMappedSources={aiMappedSources}
               />
             </Card>
           ) : activeTab === "review" && importedData ? (

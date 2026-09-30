@@ -113,6 +113,19 @@ function App() {
 />
 ```
 
+### Continue With Unmapped Required Fields
+
+By default the mapping step blocks Continue until every required field has a source column. Set `processing.allowUnmappedRequired` to let users continue anyway; each row then gets one validation error per unmapped required field ("External ID is required and your file has no column for it") and shows up as invalid in the review step, the same way a live FileFeed feed flags those rows.
+
+```tsx
+<FilefeedWorkbook
+  config={{
+    ...config,
+    processing: { allowUnmappedRequired: true },
+  }}
+/>
+```
+
 ### Custom Transforms & Validation
 
 ```tsx

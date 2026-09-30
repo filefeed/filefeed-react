@@ -11,6 +11,9 @@ import {
   validatePipelineConfig,
   collectHeaderSamples,
   applyAiColumnMappings,
+  getUnmappedRequiredFields,
+  unmappedRequiredMessage,
+  processRowBatch,
 } from "./dataProcessing";
 import type { FieldConfig, ImportedData, PipelineMappings } from "../types";
 
@@ -341,6 +344,95 @@ describe("processImportedDataWithMappings", () => {
     const row2Errors = result[2].errors.filter((e) => e.message.includes("unique"));
     expect(row0Errors).toHaveLength(1);
     expect(row2Errors).toHaveLength(1);
+  });
+});
+
+describe("getUnmappedRequiredFields", () => {
+  const fields: FieldConfig[] = [
+    { key: "external_id", label: "External ID", type: "string", required: true },
+    { key: "email", label: "Email", type: "email", required: true },
+    { key: "manager", label: "Manager", type: "email", required: true },
+    { key: "phone", label: "Phone", type: "phone" },
+  ];
+
+  it("returns required fields with no source column, in schema order", () => {
+    const out = getUnmappedRequiredFields(fields, [{ source: "E-mail", target: "email" }]);
+    expect(out.map((f) => f.key)).toEqual(["external_id", "manager"]);
+  });
+
+  it("ignores optional fields and tolerates an undefined mapping list", () => {
+    expect(getUnmappedRequiredFields(fields, undefined).map((f) => f.key)).toEqual([
+      "external_id",
+      "email",
+      "manager",
+    ]);
+    const all = [
+      { source: "a", target: "external_id" },
+      { source: "b", target: "email" },
+      { source: "c", target: "manager" },
+    ];
+    expect(getUnmappedRequiredFields(fields, all)).toEqual([]);
+  });
+});
+
+describe("unmapped required fields during processing (allowUnmappedRequired)", () => {
+  const fields: FieldConfig[] = [
+    { key: "external_id", label: "External ID", type: "string", required: true },
+    { key: "email", label: "Email", type: "email", required: true },
+    { key: "manager", label: "Manager", type: "email", required: true },
+    { key: "phone", label: "Phone", type: "phone" },
+  ];
+  const data: ImportedData = {
+    headers: ["E-mail", "Mobile"],
+    rows: [
+      { "E-mail": "ana@x.com", Mobile: "5551234567" },
+      { "E-mail": "", Mobile: "5559876543" },
+    ],
+  };
+  const pipeline: PipelineMappings = {
+    fieldMappings: [
+      { source: "E-mail", target: "email" },
+      { source: "Mobile", target: "phone" },
+    ],
+  };
+
+  it("gives every row one clear error per unmapped required field", () => {
+    const rows = processImportedDataWithMappings(data, fields, pipeline);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const ext = row.errors.filter((e) => e.field === "external_id");
+      const mgr = row.errors.filter((e) => e.field === "manager");
+      expect(ext).toHaveLength(1);
+      expect(mgr).toHaveLength(1);
+      expect(ext[0].message).toBe("External ID is required and your file has no column for it");
+      expect(mgr[0].message).toBe("Manager is required and your file has no column for it");
+      expect(ext[0].severity).toBe("error");
+      expect(row.isValid).toBe(false);
+    }
+  });
+
+  it("does not double-report a mapped required field that is empty", () => {
+    const rows = processImportedDataWithMappings(data, fields, pipeline);
+    const emailErrors0 = rows[0].errors.filter((e) => e.field === "email");
+    const emailErrors1 = rows[1].errors.filter((e) => e.field === "email");
+    expect(emailErrors0).toHaveLength(0);
+    expect(emailErrors1).toHaveLength(1);
+    expect(emailErrors1[0].message).toBe("Email is required");
+    expect(rows[1].errors).toHaveLength(3);
+  });
+
+  it("uses the same message on the mapping-state (no pipeline) path", () => {
+    const rows = processRowBatch(data.rows, 0, fields, undefined, { "E-mail": "email", Mobile: "phone" });
+    expect(rows[0].errors.map((e) => e.message)).toEqual([
+      unmappedRequiredMessage(fields[0]),
+      unmappedRequiredMessage(fields[2]),
+    ]);
+  });
+
+  it("counts as invalid rows so summaries reflect them", () => {
+    const rows = processImportedDataWithMappings(data, fields, pipeline);
+    expect(rows.filter((r) => !r.isValid)).toHaveLength(2);
+    expect(rows.flatMap((r) => r.errors).filter((e) => e.field === "manager")).toHaveLength(2);
   });
 });
 

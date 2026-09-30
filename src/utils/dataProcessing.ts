@@ -88,6 +88,23 @@ export const fieldMappingsToMappingState = (
   return out;
 };
 
+/**
+ * Required target fields that no source column is mapped to, in schema order.
+ * Shared by the mapping step (inline notice) and the Continue gate.
+ */
+export const getUnmappedRequiredFields = (
+  fields: FieldConfig[],
+  fieldMappings: FieldMapping[] | undefined
+): FieldConfig[] => {
+  const mapped = new Set<string>();
+  for (const m of fieldMappings || []) if (m.target) mapped.add(m.target);
+  return fields.filter((f) => f.required && !mapped.has(f.key));
+};
+
+/** Row-level error text for a required field the file has no column for. */
+export const unmappedRequiredMessage = (field: FieldConfig): string =>
+  `${field.label || field.key} is required and your file has no column for it`;
+
 export const validatePipelineConfig = (
   fields: FieldConfig[],
   pipeline: PipelineMappings,
@@ -608,12 +625,15 @@ export const processRowBatch = (
       }
     }
 
+    // Required targets with no source column: exactly one clear error per row
+    // and per field. Mapped-but-empty values are reported above by
+    // validateFieldWithRegistry ("X is required"), never twice.
     for (const f of fields) {
       if (f.required && !(f.key in processed)) {
         errors.push({
           row: index,
           field: f.key,
-          message: `${f.label} is required but not mapped`,
+          message: unmappedRequiredMessage(f),
           severity: "error",
         });
       }
