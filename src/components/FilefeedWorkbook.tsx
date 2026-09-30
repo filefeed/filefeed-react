@@ -43,7 +43,13 @@ import { useWorkbookSubmit, buildManualRows } from "../hooks/useWorkbookSubmit";
 import {
   validatePipelineConfig,
   mappingStateToFieldMappings,
+  collectHeaderSamples,
+  applyAiColumnMappings,
 } from "../utils/dataProcessing";
+import type { AiColumnSuggestion } from "../utils/dataProcessing";
+
+/** Hard cap on the AI column-mapping request; after this the local mapping stands. */
+const AI_COLUMN_TIMEOUT_MS = 12_000;
 
 // ─────────────────────────────────────────────────────────────────────
 // Error Boundary — catches rendering crashes so the host app survives.
@@ -113,6 +119,7 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
     const importedData = useStore(store, (s) => s.importedData);
     const mappingState = useStore(store, (s) => s.mappingState);
     const isLoading = useStore(store, (s) => s.isLoading);
+    const aiMappingPending = useStore(store, (s) => s.aiMappingPending);
     const processingProgress = useStore(store, (s) => s.processingProgress);
     const pipelineMappings = useStore(store, (s) => s.pipelineMappings);
     const transformRegistry = useStore(store, (s) => s.transformRegistry);
@@ -128,6 +135,7 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
       setProcessedRows,
       processOnContinue,
       cancelProcessing,
+      setAiMappingPending,
       reset: resetStore,
     } = useMemo(() => store.getState(), [store]);
 
@@ -223,39 +231,67 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
       [setMappingBatch]
     );
 
-    // ── AI column-mapping fallback ───────────────────────────────────
-    // Once the local fuzzy auto-mapping has run on a fresh import, ask the
-    // configured endpoint to fill in any unmatched headers. The endpoint sees
-    // the full schema plus the headers we couldn't place, and we merge any
-    // confident replies (≥ 0.7) into the existing mapping state.
+    // ── AI column mapping (authoritative) ────────────────────────────
+    // Once the local fuzzy auto-mapping has settled on a fresh import, send
+    // ALL headers (plus the local mapping as a hint and a few sample values
+    // per header) to the configured endpoint. Confident replies rebuild the
+    // mapping from scratch, so a wrong fuzzy match such as "DOB -> Hire Date"
+    // can be corrected or removed. While the request is in flight the store
+    // flag `aiMappingPending` blocks Continue; it clears on completion,
+    // failure or the timeout. Any failure keeps the local mapping.
     const aiColumnEndpoint = config?.aiColumnSuggestEndpoint;
     const aiColumnAttemptedRef = useRef<string | null>(null);
+    const aiInflightRef = useRef<{ sig: string; controller: AbortController } | null>(null);
+
+    const finishAiMapping = useCallback(
+      (sig: string) => {
+        if (aiInflightRef.current?.sig !== sig) return;
+        aiInflightRef.current = null;
+        setAiMappingPending(false);
+        eventsRef.current?.onAiMappingStateChange?.(false);
+      },
+      [setAiMappingPending]
+    );
 
     useEffect(() => {
       if (!aiColumnEndpoint) return;
       if (!importedData || !currentSheetConfig) return;
       if (isLoading) return;
+      if (importedData.headers.length === 0) return;
 
       const sig = `${importedData.fileName ?? ""}::${importedData.headers.join("|")}`;
       if (aiColumnAttemptedRef.current === sig) return;
-
-      const unmatched = importedData.headers.filter(
-        (h) => !mappingState[h]
-      );
-      if (unmatched.length === 0) {
-        aiColumnAttemptedRef.current = sig;
-        return;
-      }
       aiColumnAttemptedRef.current = sig;
 
-      let cancelled = false;
+      // A new import supersedes any request still running for the old one.
+      if (aiInflightRef.current) {
+        aiInflightRef.current.controller.abort();
+        finishAiMapping(aiInflightRef.current.sig);
+      }
+
+      const controller = new AbortController();
+      aiInflightRef.current = { sig, controller };
+      setAiMappingPending(true);
+      eventsRef.current?.onAiMappingStateChange?.(true);
+      const timeout = setTimeout(() => {
+        controller.abort();
+        finishAiMapping(sig);
+      }, AI_COLUMN_TIMEOUT_MS);
+
+      const headers = importedData.headers;
+      const localMappings: Record<string, string | null> = {};
+      const current = store.getState().mappingState;
+      for (const h of headers) localMappings[h] = current[h] ?? null;
+      const fieldKeys = new Set(currentSheetConfig.fields.map((f) => f.key));
+
       (async () => {
         try {
           const res = await fetch(aiColumnEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
             body: JSON.stringify({
-              headers: unmatched,
+              headers,
               fields: currentSheetConfig.fields.map((f) => ({
                 key: f.key,
                 label: f.label,
@@ -263,40 +299,44 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
                 required: f.required,
                 enum: f.enum,
               })),
-              existingMappings: mappingState,
+              localMappings,
+              samples: collectHeaderSamples(headers, importedData.rows),
             }),
           });
-          if (!res.ok || cancelled) return;
-          const data = (await res.json()) as {
-            mappings?: Array<{ source: string; target: string | null; confidence: number }>;
-          };
-          if (cancelled || !Array.isArray(data.mappings)) return;
+          if (!res.ok) return;
+          const data = (await res.json()) as { mappings?: AiColumnSuggestion[] };
+          if (controller.signal.aborted) return;
+          if (!Array.isArray(data.mappings) || data.mappings.length === 0) return;
+          // Still the same import? (the user may have started over meanwhile)
+          if (store.getState().importedData !== importedData) return;
 
-          const usedTargets = new Set(
-            Object.values(mappingState).filter(Boolean) as string[]
-          );
-          const merged: Record<string, string | null> = { ...mappingState };
-          for (const m of data.mappings) {
-            if (!m.target) continue;
-            if (m.confidence < 0.7) continue;
-            if (usedTargets.has(m.target)) continue;
-            if (merged[m.source]) continue;
-            merged[m.source] = m.target;
-            usedTargets.add(m.target);
-          }
-          if (cancelled) return;
-          setMappingBatch(merged);
+          // Base on the mapping as it is now, so edits made while waiting survive
+          // where the AI has no confident opinion.
+          const base = store.getState().mappingState;
+          const local: Record<string, string | null> = {};
+          for (const h of headers) local[h] = base[h] ?? null;
+          const next = applyAiColumnMappings(headers, local, data.mappings, fieldKeys);
+          setMappingBatch(next);
+          eventsRef.current?.onMappingChanged?.(next);
         } catch (err) {
-          if (typeof console !== "undefined") {
+          if (!controller.signal.aborted && typeof console !== "undefined") {
             console.warn("[FilefeedWorkbook] AI column mapping failed; keeping local mapping.", err);
           }
+        } finally {
+          clearTimeout(timeout);
+          finishAiMapping(sig);
         }
       })();
+    }, [aiColumnEndpoint, importedData, currentSheetConfig, isLoading, setMappingBatch, setAiMappingPending, finishAiMapping, store]);
 
-      return () => {
-        cancelled = true;
-      };
-    }, [aiColumnEndpoint, importedData, currentSheetConfig, mappingState, isLoading, setMappingBatch]);
+    // Abort a pending AI request when the workbook unmounts.
+    useEffect(
+      () => () => {
+        aiInflightRef.current?.controller.abort();
+        aiInflightRef.current = null;
+      },
+      []
+    );
 
     const canProceedToReview = useMemo(() => {
       if (!currentSheetConfig) return false;
@@ -414,6 +454,7 @@ const FilefeedWorkbookInner = forwardRef<FilefeedWorkbookRef, InnerProps>(
                 transformRegistry={transformRegistry}
                 isProcessing={isLoading}
                 canContinue={canProceedToReview}
+                aiMappingPending={aiMappingPending}
               />
             </Card>
           ) : activeTab === "review" && importedData ? (

@@ -9,6 +9,8 @@ import {
   mappingStateToFieldMappings,
   fieldMappingsToMappingState,
   validatePipelineConfig,
+  collectHeaderSamples,
+  applyAiColumnMappings,
 } from "./dataProcessing";
 import type { FieldConfig, ImportedData, PipelineMappings } from "../types";
 
@@ -339,5 +341,69 @@ describe("processImportedDataWithMappings", () => {
     const row2Errors = result[2].errors.filter((e) => e.message.includes("unique"));
     expect(row0Errors).toHaveLength(1);
     expect(row2Errors).toHaveLength(1);
+  });
+});
+
+describe("collectHeaderSamples", () => {
+  it("returns the first distinct non-empty trimmed values, capped and truncated", () => {
+    const rows = [
+      { A: " x ", B: "" },
+      { A: "x", B: null },
+      { A: "y", B: "z".repeat(80) },
+      { A: "w", B: "q" },
+      { A: "v", B: "r" },
+    ];
+    const s = collectHeaderSamples(["A", "B", "C"], rows);
+    expect(s.A).toEqual(["x", "y", "w"]);
+    expect(s.B[0]).toHaveLength(60);
+    expect(s.B).toEqual(["z".repeat(60), "q", "r"]);
+    expect(s.C).toEqual([]);
+  });
+});
+
+describe("applyAiColumnMappings", () => {
+  const keys = new Set(["hireDate", "dateOfBirth", "managerEmail", "email", "firstName"]);
+
+  it("replaces a wrong local match with a confident AI target", () => {
+    const out = applyAiColumnMappings(
+      ["DOB", "Start Date"],
+      { DOB: "hireDate", "Start Date": "managerEmail" },
+      [
+        { source: "DOB", target: "dateOfBirth", confidence: 0.95 },
+        { source: "Start Date", target: "hireDate", confidence: 0.9 },
+      ],
+      keys
+    );
+    expect(out).toEqual({ DOB: "dateOfBirth", "Start Date": "hireDate" });
+  });
+
+  it("removes a local match when the AI confidently says null", () => {
+    const out = applyAiColumnMappings(["Notes"], { Notes: "firstName" }, [{ source: "Notes", target: null, confidence: 0.8 }], keys);
+    expect(out).toEqual({ Notes: null });
+  });
+
+  it("keeps the local match for low-confidence or missing AI entries", () => {
+    const out = applyAiColumnMappings(
+      ["Given Name", "Mail"],
+      { "Given Name": "firstName", Mail: "email" },
+      [{ source: "Given Name", target: null, confidence: 0.2 }],
+      keys
+    );
+    expect(out).toEqual({ "Given Name": "firstName", Mail: "email" });
+  });
+
+  it("never assigns a target twice and drops a local match whose target the AI took", () => {
+    const out = applyAiColumnMappings(
+      ["Work E-mail", "Mgr E-mail"],
+      { "Mgr E-mail": "email" },
+      [{ source: "Work E-mail", target: "email", confidence: 0.9 }, { source: "Mgr E-mail", target: "email", confidence: 0.9 }],
+      keys
+    );
+    expect(out).toEqual({ "Work E-mail": "email", "Mgr E-mail": null });
+  });
+
+  it("ignores targets that are not schema fields", () => {
+    const out = applyAiColumnMappings(["X"], { X: "email" }, [{ source: "X", target: "nope", confidence: 0.99 }], keys);
+    expect(out).toEqual({ X: "email" });
   });
 });

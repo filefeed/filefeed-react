@@ -812,3 +812,100 @@ export const generateAutoMappingAsync = async (
   return mapping;
 };
 
+
+// ─────────────────────────────────────────────────────────────────────
+// AI column mapping (aiColumnSuggestEndpoint) helpers
+// ─────────────────────────────────────────────────────────────────────
+
+export interface AiColumnSuggestion {
+  source: string;
+  target: string | null;
+  confidence: number;
+}
+
+/** Minimum confidence for an AI reply (target or explicit null) to override the local match. */
+export const AI_COLUMN_CONFIDENCE_THRESHOLD = 0.6;
+
+/**
+ * First `max` distinct, non-empty, trimmed values per header (each cut to
+ * `maxLen` chars). Sent to the AI endpoint so it can tell a date of birth from
+ * a hire date or a code from a name.
+ */
+export const collectHeaderSamples = (
+  headers: string[],
+  rows: Record<string, unknown>[],
+  max: number = 3,
+  maxLen: number = 60
+): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const header of headers) {
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (let i = 0; i < rows.length && values.length < max; i++) {
+      const raw = rows[i]?.[header];
+      if (raw === null || raw === undefined) continue;
+      const v = String(raw).trim().slice(0, maxLen);
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      values.push(v);
+    }
+    out[header] = values;
+  }
+  return out;
+};
+
+/**
+ * Build the final column mapping from the local fuzzy result and the AI reply.
+ * The AI is authoritative when confident (>= threshold): it can add a target,
+ * replace a wrong local match, or (target null) remove one. Below the
+ * threshold, or for headers the AI did not mention, the local match is kept
+ * as long as its target is still free. No target is ever assigned twice.
+ */
+export const applyAiColumnMappings = (
+  headers: string[],
+  localMapping: Record<string, string | null>,
+  suggestions: AiColumnSuggestion[],
+  fieldKeys: Set<string>,
+  threshold: number = AI_COLUMN_CONFIDENCE_THRESHOLD
+): Record<string, string | null> => {
+  const bySource = new Map<string, AiColumnSuggestion>();
+  for (const s of suggestions) {
+    if (!s || typeof s.source !== "string" || bySource.has(s.source)) continue;
+    bySource.set(s.source, s);
+  }
+
+  const used = new Set<string>();
+  const result: Record<string, string | null> = {};
+  const fallback: string[] = [];
+
+  // Pass 1: confident AI decisions win and reserve their targets.
+  for (const header of headers) {
+    const ai = bySource.get(header);
+    const conf = ai && typeof ai.confidence === "number" && Number.isFinite(ai.confidence) ? ai.confidence : 0;
+    if (ai && conf >= threshold) {
+      if (ai.target && fieldKeys.has(ai.target) && !used.has(ai.target)) {
+        result[header] = ai.target;
+        used.add(ai.target);
+        continue;
+      }
+      if (ai.target === null) {
+        result[header] = null;
+        continue;
+      }
+    }
+    fallback.push(header);
+  }
+
+  // Pass 2: everything else keeps its local match if the target is still free.
+  for (const header of fallback) {
+    const local = localMapping[header] ?? null;
+    if (local && fieldKeys.has(local) && !used.has(local)) {
+      result[header] = local;
+      used.add(local);
+    } else {
+      result[header] = null;
+    }
+  }
+
+  return result;
+};

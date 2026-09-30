@@ -45,6 +45,7 @@ interface WorkbookActions {
   deleteInvalidRows: () => void;
 
   setLoading: (loading: boolean) => void;
+  setAiMappingPending: (pending: boolean) => void;
 
   reset: () => void;
 }
@@ -62,6 +63,7 @@ const initialState: WorkbookState = {
   processedData: [],
   validationErrors: [],
   isLoading: false,
+  aiMappingPending: false,
   processingProgress: 0,
   pipelineMappings: undefined,
   transformRegistry: defaultTransforms,
@@ -299,6 +301,7 @@ export const createWorkbookStore = (): StoreApi<WorkbookStore> => {
     clearImportedData: () => {
       set({
         importedData: null,
+        aiMappingPending: false,
         mappingState: {},
         processedData: [],
         validationErrors: [],
@@ -581,6 +584,11 @@ export const createWorkbookStore = (): StoreApi<WorkbookStore> => {
 
     setLoading: (loading) => {
       set({ isLoading: loading });
+    },
+
+    setAiMappingPending: (pending) => {
+      if (get().aiMappingPending === pending) return;
+      set({ aiMappingPending: pending });
     },
 
     reset: () => {

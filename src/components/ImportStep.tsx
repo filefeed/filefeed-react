@@ -101,7 +101,7 @@ export function ImportStep({
   return (
     <Card shadow="sm" padding="md" radius="md" withBorder>
       {/* ─── Header bar ─── */}
-      <Group justify="space-between" align="center" mb="sm" wrap="nowrap">
+      <Group justify="space-between" align="center" mb="sm" wrap="nowrap" data-ff-part="sheet-header">
         <Group gap={10} wrap="nowrap">
           <Text size="sm" c="gray.8" fw={600}>
             {sheetConfig.name || "Data Sheet"}
@@ -150,7 +150,7 @@ export function ImportStep({
         )}
       </Group>
 
-      <Divider mb="sm" />
+      <Divider mb="sm" data-ff-part="sheet-header-divider" />
 
       {/* ─── Unified table area ─── */}
       <Box

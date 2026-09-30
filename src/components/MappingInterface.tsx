@@ -185,6 +185,7 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
   transformRegistry,
   isProcessing,
   canContinue,
+  aiMappingPending = false,
 }) => {
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
   const [lastHoveredSource, setLastHoveredSource] = useState<string | null>(null);
@@ -331,13 +332,14 @@ const MappingInterface: React.FC<MappingInterfaceProps> = ({
             radius="md"
             variant="filled"
             color="dark"
-            disabled={isProcessing}
+            disabled={isProcessing || aiMappingPending}
+            data-ff-ai-pending={aiMappingPending || undefined}
             onClick={() => {
               if (canContinue) onContinue?.();
               else setMissingModalOpen(true);
             }}
           >
-            Continue
+            {aiMappingPending ? "Matching columns..." : "Continue"}
           </Button>
         </Group>
       </Flex>
