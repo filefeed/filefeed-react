@@ -20,10 +20,15 @@ export interface CreateWorkbookConfig {
    */
   aiSuggestEndpoint?: string;
   /**
-   * Optional URL the SDK can POST to for AI-driven column-mapping fallback.
-   * Called after local fuzzy matching, with the unmatched headers and the
-   * full target schema; the response is merged into the existing mapping
-   * state. Falls back silently if unset or if the request fails.
+   * Optional URL the SDK can POST to for AI-driven column mapping.
+   * Called once per import after local fuzzy matching, with ALL headers, the
+   * target schema, the local mapping as a hint and a few sample values per
+   * header: `{ headers, fields, localMappings, samples }`. Expects
+   * `{ mappings: [{ source, target | null, confidence }] }` covering every
+   * header. Confident replies (>= 0.6) are authoritative: they can add,
+   * replace or remove a local match. While the request is in flight
+   * `aiMappingPending` is true and the Continue button is blocked (12 s cap).
+   * Falls back silently to the local mapping if unset or if the request fails.
    */
   aiColumnSuggestEndpoint?: string;
 }
@@ -146,6 +151,8 @@ export interface WorkbookState {
   processedData: DataRow[];
   validationErrors: ValidationError[];
   isLoading: boolean;
+  /** True while the AI column-mapping request (aiColumnSuggestEndpoint) is in flight. */
+  aiMappingPending: boolean;
   pipelineMappings?: PipelineMappings;
   transformRegistry?: TransformRegistry;
   validationRegistry?: ValidationRegistry;
@@ -166,6 +173,8 @@ export interface FilefeedEvents {
   onSubmitComplete?: () => void;
   onStepChange?: (step: "import" | "mapping" | "values" | "review") => void;
   onMetadataRowDetected?: (info: MetadataRowInfo) => void;
+  /** Fires with `true` when the AI column-mapping request starts and `false` when it settles (success, failure or timeout). */
+  onAiMappingStateChange?: (pending: boolean) => void;
   onReset?: () => void;
   onError?: (error: { type: "import" | "processing" | "submit" | "validation"; message: string; originalError?: unknown }) => void;
 }
@@ -190,6 +199,8 @@ export interface MappingInterfaceProps {
   transformRegistry?: TransformRegistry;
   isProcessing?: boolean;
   canContinue?: boolean;
+  /** Blocks Continue and relabels it while the AI column mapping is still running. */
+  aiMappingPending?: boolean;
 }
 
 export interface FilefeedWorkbookRef {

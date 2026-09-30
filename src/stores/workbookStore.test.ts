@@ -125,4 +125,16 @@ describe("workbookStore", () => {
     expect(state.mappingState["Col B"]).toBe("age");
     expect(state.pipelineMappings?.fieldMappings).toHaveLength(2);
   });
+
+  it("setAiMappingPending toggles the flag and reset/clearImportedData clear it", () => {
+    const store = createWorkbookStore();
+    expect(store.getState().aiMappingPending).toBe(false);
+    store.getState().setAiMappingPending(true);
+    expect(store.getState().aiMappingPending).toBe(true);
+    store.getState().clearImportedData();
+    expect(store.getState().aiMappingPending).toBe(false);
+    store.getState().setAiMappingPending(true);
+    store.getState().reset();
+    expect(store.getState().aiMappingPending).toBe(false);
+  });
 });
